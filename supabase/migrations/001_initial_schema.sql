@@ -218,19 +218,31 @@ CREATE POLICY "Tournament participants can create teams"
 -- Functions
 
 -- Function to auto-create profile on user signup
-CREATE
-OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+SET search_path = public
+AS $$
 BEGIN
-INSERT INTO profiles (id, email, full_name, avatar_url)
-VALUES (NEW.id,
-        NEW.email,
-        COALESCE(NEW.raw_user_meta_data ->>'full_name', split_part(NEW.email, '@', 1)),
-        NEW.raw_user_meta_data ->>'avatar_url');
-RETURN NEW;
+  INSERT INTO public.profiles (
+    id,
+    email,
+    full_name,
+    avatar_url
+  )
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.email, 'no-email'),
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      split_part(COALESCE(NEW.email, 'usuario'), '@', 1),
+      'Usuario'
+    ),
+    NEW.raw_user_meta_data->>'avatar_url'
+  );
+
+  RETURN NEW;
 END;
-$$
-LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger for new user
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
