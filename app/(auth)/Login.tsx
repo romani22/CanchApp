@@ -24,7 +24,8 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 		return () => clearInterval(interval)
 	}, [])
 
-	const { signIn, signInWithGoogle } = useAuth()
+	const { signIn } = useAuth()
+	// const { signIn, signInWithGoogle } = useAuth()
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
@@ -50,6 +51,9 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 	// 		setLoading(false)
 	// 	}
 	// }
+	const handleForgotPassword = () => {
+		router.push('/(auth)/ForgotPassword')
+	}
 	return (
 		<ImageBackground source={images[index]} style={styles.background} resizeMode='cover'>
 			<SafeAreaView style={styles.container}>
@@ -99,7 +103,7 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 									</View>
 
 									{/* Forgot Password */}
-									<TouchableOpacity style={styles.forgotPassword}>
+									<TouchableOpacity style={styles.forgotPassword} onPress={handleForgotPassword}>
 										<Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
 									</TouchableOpacity>
 
