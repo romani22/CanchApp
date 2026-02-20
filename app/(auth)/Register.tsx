@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { authService, validateEmail, validatePassword } from '@/services/auth.service'
+import { authService } from '@/services/auth.service'
 import { colors } from '@/theme/colors'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -45,12 +45,12 @@ export default function Register() {
 				return
 			}
 
-			if (!validateEmail(email)) {
+			if (!authService.validateEmail(email)) {
 				setError('Email inválido')
 				return
 			}
 
-			const passwordValidation = validatePassword(password)
+			const passwordValidation = authService.validatePassword(password)
 			if (!passwordValidation.isValid) {
 				setError(passwordValidation.errors[0])
 				return
@@ -59,11 +59,11 @@ export default function Register() {
 			setLoading(true)
 
 			// 1️⃣ Crear usuario (esto dispara el trigger)
-			const { data, error: signUpError } = await authService.signUp(email, password, fullName)
+			const { error: signUpError, data } = await authService.signUp(email, password, fullName)
 
 			if (signUpError) throw signUpError
 
-			const userId = data.user?.id
+			const userId = data?.id
 			if (!userId) throw new Error('No se pudo obtener el usuario')
 
 			// 2️⃣ Actualizar perfil ya creado por el trigger

@@ -1,41 +1,30 @@
 import { styles } from '@/assets/styles/Dashboard.styles'
+import { MatchCard, matchesService } from '@/services/matches.service'
+import { getSportImage } from '@/Utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
-import { Image, Text, TouchableOpacity, View } from 'react-native'
-
-interface Match {
-	id: string
-	title: string
-	location: string
-	time: string
-	price: string
-	distance: string
-	spots: number
-	image: string
-}
+import { useEffect, useState } from 'react'
+import { ActivityIndicator, Image, Text, View } from 'react-native'
 
 export default function Recomendations() {
-	const recommendedMatches: Match[] = [
-		{
-			id: '1',
-			title: 'Pádel Mixto Avanzado',
-			location: 'Club Los Pinos • San Isidro',
-			time: '19:30',
-			price: '$2.500',
-			distance: '1.2 KM',
-			spots: 3,
-			image: 'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400',
-		},
-		{
-			id: '2',
-			title: 'Básquet 3x3 Amistoso',
-			location: 'Parque Municipal',
-			time: 'Mañana, 10:00',
-			price: 'Gratis',
-			distance: '0.5 KM',
-			spots: 1,
-			image: 'https://images.unsplash.com/photo-1504450758481-7338eba7524a?w=400',
-		},
-	]
+	const [recommendedMatches, setRecommendedMatches] = useState<MatchCard[]>([])
+	const [loading, setLoading] = useState(true)
+
+	useEffect(() => {
+		loadMatches()
+	}, [])
+
+	const loadMatches = async () => {
+		try {
+			setLoading(true)
+			const matches = await matchesService.getRecommendedMatches()
+			setRecommendedMatches(matches)
+		} catch (error) {
+			console.log(error)
+		} finally {
+			setLoading(false)
+		}
+	}
+
 	return (
 		<>
 			<View style={styles.sectionHeader}>
@@ -46,40 +35,25 @@ export default function Recomendations() {
 				</View>
 			</View>
 
-			{/* Match Cards */}
+			{loading && (
+				<View style={{ paddingVertical: 20 }}>
+					<ActivityIndicator size='small' color='#34d399' />
+				</View>
+			)}
+
+			{!loading && recommendedMatches.length === 0 && (
+				<View style={styles.matchCard}>
+					<Text style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>No hay partidos activos en tu zona 🎾</Text>
+				</View>
+			)}
+
 			{recommendedMatches.map((match) => (
 				<View key={match.id} style={styles.matchCard}>
 					<View style={styles.matchImageContainer}>
-						<Image source={{ uri: match.image }} style={styles.matchImage} resizeMode='cover' />
-						<View style={styles.distanceBadge}>
-							<Text style={styles.distanceBadgeText}>A {match.distance}</Text>
-						</View>
+						<Image source={getSportImage(match.sport)} style={styles.matchImage} resizeMode='cover' />
 					</View>
 					<View style={styles.matchInfo}>
-						<View style={styles.matchHeader}>
-							<Text style={styles.matchTitle}>{match.title}</Text>
-							<View style={styles.spotsBadge}>
-								<Text style={styles.spotsBadgeText}>
-									{match.spots} {match.spots === 1 ? 'CUPO' : 'CUPOS'}
-								</Text>
-							</View>
-						</View>
-						<Text style={styles.matchLocation}>{match.location}</Text>
-						<View style={styles.matchFooter}>
-							<View style={styles.matchDetails}>
-								<View style={styles.matchDetailItem}>
-									<Ionicons name='time-outline' size={14} color='#9ca3af' />
-									<Text style={styles.matchDetailText}>{match.time}</Text>
-								</View>
-								<View style={styles.matchDetailItem}>
-									<Ionicons name='card-outline' size={14} color='#9ca3af' />
-									<Text style={styles.matchDetailText}>{match.price}</Text>
-								</View>
-							</View>
-							<TouchableOpacity style={styles.joinButton}>
-								<Text style={styles.joinButtonText}>Unirse</Text>
-							</TouchableOpacity>
-						</View>
+						<Text style={styles.matchTitle}>{match.title}</Text>
 					</View>
 				</View>
 			))}

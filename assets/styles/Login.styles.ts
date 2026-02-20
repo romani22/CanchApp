@@ -1,13 +1,15 @@
-import { borderRadius, colors } from '@/theme/colorsLogin'; // Ajusta la ruta según tu proyecto
+import { borderRadius, colors } from '@/theme/colors'; // Ajusta la ruta según tu proyecto
 import { StyleSheet } from 'react-native'
 
 export const styles = StyleSheet.create({
 	background: {
 		flex: 1,
+		width: '100%',
+		height: '100%',
 	},
 	container: {
 		flex: 1,
-		backgroundColor: 'rgba(179,179,179,0.18)',
+		backgroundColor: colors.BackgroundLogin,
 	},
 	backgroundGradient: {
 		position: 'absolute',

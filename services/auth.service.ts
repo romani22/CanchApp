@@ -1,132 +1,109 @@
-// import { supabase } from '@/lib/supabase'
-// import { makeRedirectUri } from 'expo-auth-session'
-// import * as Google from 'expo-auth-session/providers/google'
-// import * as WebBrowser from 'expo-web-browser'
+import { supabase } from '@/lib/supabase'
+import { Profile } from '@/types/database.types'
+import { AuthChangeEvent, Session } from '@supabase/supabase-js'
 
-// WebBrowser.maybeCompleteAuthSession()
+export const authService = {
+	/* ============================
+	   SESSION
+	============================ */
 
-// /**
-//  * Hook para login con Google usando Expo + Supabase
-//  */
-// export const useGoogleAuth = () => {
-// 	const redirectTo = makeRedirectUri({
-// 		scheme: 'canchapp',
-// 	})
+	async getSession() {
+		return await supabase.auth.getSession()
+	},
 
-// 	const [request, response, promptAsync] = Google.useAuthRequest({
-// 		clientId: process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
-// 	})
+	onAuthStateChange(callback: (event: AuthChangeEvent, session: Session | null) => void) {
+		return supabase.auth.onAuthStateChange(callback)
+	},
 
-// 	const signInWithGoogle = async () => {
-// 		const result = await promptAsync()
+	validateEmail: (email: string): boolean => {
+		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+		return emailRegex.test(email)
+	},
 
-// 		if (result.type !== 'success') {
-// 			throw new Error('Login cancelado')
-// 		}
+	validatePassword: (password: string): { isValid: boolean; errors: string[] } => {
+		const errors: string[] = []
 
-// 		const idToken = result.params?.id_token
+		if (password.length < 8) {
+			errors.push('La contraseña debe tener al menos 8 caracteres')
+		}
+		if (!/[A-Z]/.test(password)) {
+			errors.push('Debe incluir al menos una letra mayúscula')
+		}
+		if (!/[a-z]/.test(password)) {
+			errors.push('Debe incluir al menos una letra minúscula')
+		}
+		if (!/[0-9]/.test(password)) {
+			errors.push('Debe incluir al menos un número')
+		}
 
-// 		if (!idToken) {
-// 			throw new Error('No se recibió id_token desde Google')
-// 		}
+		return {
+			isValid: errors.length === 0,
+			errors,
+		}
+	},
 
-// 		const { data, error } = await supabase.auth.signInWithIdToken({
-// 			provider: 'google',
-// 			token: idToken,
-// 		})
+	/* ============================
+	   AUTH
+	============================ */
 
-// 		if (error) {
-// 			throw error
-// 		}
+	async signUp(email: string, password: string, fullName: string): Promise<{ error: Error | null; data: { id: string } }> {
+		const response = await supabase.auth.signUp({
+			email,
+			password,
+			options: {
+				data: { full_name: fullName },
+			},
+		})
 
-// 		return data
-// 	}
+		return { error: response.error ?? null, data: { id: response.data.user?.id ?? '' } }
+	},
 
-// 	return {
-// 		signInWithGoogle,
-// 		request,
-// 	}
-// }
+	async signIn(email: string, password: string): Promise<{ error: Error | null }> {
+		const { error } = await supabase.auth.signInWithPassword({
+			email,
+			password,
+		})
 
-// /**
-//  * Validar formato de email
-//  */
-// export const validateEmail = (email: string): boolean => {
-// 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-// 	return emailRegex.test(email)
-// }
+		return { error: error ?? null }
+	},
 
-// /**
-//  * Validar contraseña
-//  */
-// export const validatePassword = (password: string): { isValid: boolean; errors: string[] } => {
-// 	const errors: string[] = []
+	async signOut(): Promise<{ error: Error | null }> {
+		const { error } = await supabase.auth.signOut()
+		return { error: error ?? null }
+	},
 
-// 	if (password.length < 8) {
-// 		errors.push('La contraseña debe tener al menos 8 caracteres')
-// 	}
-// 	if (!/[A-Z]/.test(password)) {
-// 		errors.push('Debe incluir al menos una letra mayúscula')
-// 	}
-// 	if (!/[a-z]/.test(password)) {
-// 		errors.push('Debe incluir al menos una letra minúscula')
-// 	}
-// 	if (!/[0-9]/.test(password)) {
-// 		errors.push('Debe incluir al menos un número')
-// 	}
+	async resetPassword(email: string): Promise<{ error: Error | null }> {
+		const { error } = await supabase.auth.resetPasswordForEmail(email, {
+			redirectTo: 'canchapp://auth/reset-password',
+		})
 
-// 	return {
-// 		isValid: errors.length === 0,
-// 		errors,
-// 	}
-// }
+		return { error: error ?? null }
+	},
 
-// /**
-//  * Checkear si un usuario existe en Supabase
-//  * (workaround recomendado por Supabase)
-//  */
-// export const checkUserExists = async (email: string): Promise<boolean> => {
-// 	const { error } = await supabase.auth.signInWithOtp({
-// 		email,
-// 		options: {
-// 			shouldCreateUser: false,
-// 		},
-// 	})
+	/* ============================
+	   PROFILE
+	============================ */
 
-// 	return !error
-// }
+	async getProfile(userId: string): Promise<Profile | null> {
+		const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
 
-// export const redirectTo = makeRedirectUri({
-// 	scheme: 'canchapp',
-// })
+		if (error) {
+			console.error('Error fetching profile:', error)
+			return null
+		}
 
-// export const authService = {
-// 	signInWithEmail(email: string, password: string) {
-// 		return supabase.auth.signInWithPassword({ email, password })
-// 	},
+		return data
+	},
 
-// 	signUp(email: string, password: string, fullName?: string) {
-// 		return supabase.auth.signUp({
-// 			email,
-// 			password,
-// 			options: {
-// 				emailRedirectTo: redirectTo,
-// 				data: {
-// 					full_name: fullName,
-// 				},
-// 			},
-// 		})
-// 	},
+	async updateProfile(userId: string, updates: Partial<Profile>): Promise<{ error: Error | null }> {
+		const { error } = await supabase
+			.from('profiles')
+			.update({
+				...updates,
+				updated_at: new Date().toISOString(),
+			})
+			.eq('id', userId)
 
-// 	signOut() {
-// 		return supabase.auth.signOut()
-// 	},
-
-// 	getSession() {
-// 		return supabase.auth.getSession()
-// 	},
-
-// 	onAuthStateChange(callback: Parameters<typeof supabase.auth.onAuthStateChange>[0]) {
-// 		return supabase.auth.onAuthStateChange(callback)
-// 	},
-// }
+		return { error: error ?? null }
+	},
+}
