@@ -4,10 +4,12 @@ import { StyleSheet } from 'react-native'
 export const styles = StyleSheet.create({
 	background: {
 		flex: 1,
+		width: '100%',
+		height: '100%',
 	},
 	container: {
 		flex: 1,
-		backgroundColor: colors.backgroundDark,
+		backgroundColor: colors.BackgroundLogin,
 	},
 	backgroundGradient: {
 		position: 'absolute',
