@@ -265,4 +265,32 @@ export const styles = StyleSheet.create({
 		marginTop: spacing.xl,
 		opacity: 0.6,
 	},
+	descriptionModal: {
+		color: '#DDDDDD',
+		marginBottom: 24,
+	},
+	titleModal: {
+		color: 'white',
+		fontSize: 18,
+		fontWeight: '600',
+		marginBottom: 10,
+	},
+	buttonCancelModal: {
+		padding: 12,
+		backgroundColor: '#536459',
+		borderRadius: 8,
+		alignItems: 'center',
+	},
+	buttonSaveModal: {
+		padding: 12,
+		backgroundColor: colors.primary,
+		borderRadius: 8,
+		alignItems: 'center',
+	},
+	buttonDiscardModal: {
+		padding: 12,
+		backgroundColor: colors.error,
+		borderRadius: 8,
+		alignItems: 'center',
+	},
 })

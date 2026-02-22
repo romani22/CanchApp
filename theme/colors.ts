@@ -7,9 +7,9 @@ export const colors = {
 	// Secondary
 	secondary: '#27272a',
 	// Background
-	backgroundLight: '#f6f8f7',
+	backgroundLight: '#33443B',
 	BackgroundLogin: '#5757572A',
-	backgroundDark: '#112117',
+	backgroundDark: '#0a0f0a',
 	// Surface (cards, etc)
 	surfaceLight: '#ffffff',
 	surfaceDark: '#1c2620',

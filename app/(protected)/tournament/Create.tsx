@@ -1,3 +1,4 @@
+import { styles } from '@/assets/styles/Tournament.style'
 import { colors } from '@/theme/colors'
 import { spacing } from '@/theme/spacing'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
@@ -6,7 +7,6 @@ import { router } from 'expo-router'
 import { useState } from 'react'
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { styles } from '../../assets/styles/Tournament.style'
 
 const sports = [
 	{ id: 'futbol', label: 'Fútbol', icon: 'soccer' },

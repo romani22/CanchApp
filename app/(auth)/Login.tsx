@@ -1,3 +1,4 @@
+import { styles } from '@/assets/styles/Login.styles'
 import Loader from '@/components/ui/Loader'
 import { useAuth } from '@/context/AuthContext'
 import { Ionicons } from '@expo/vector-icons'
@@ -5,10 +6,9 @@ import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { styles } from '../../assets/styles/Login.styles'
 import { colors } from '../../theme/colorsLogin'
 
-const images = [require('../../assets/images/cancha_basquet.png'), require('../../assets/images/cancha_futbol.png'), require('../../assets/images/cancha_padle.png'), require('../../assets/images/cancha_tenis.png')]
+const images = [require('@/assets/images/cancha_basquet.png'), require('@/assets/images/cancha_futbol.png'), require('@/assets/images/cancha_padle.png'), require('@/assets/images/cancha_tenis.png')]
 
 export default function LoginScreen({ navigation }: { navigation?: any }) {
 	const [email, setEmail] = useState('')
@@ -37,9 +37,8 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 		if (error) {
 			setError(error.message)
 		}
-		setTimeout(() => {
-			setLoading(false)
-		}, 10000)
+		setLoading(false)
+		router.replace('/(protected)/(tabs)/Dashboard')
 	}
 
 	// const handleGoogleLogin = async () => {

@@ -1,40 +1,25 @@
-// components/ui/Loader.tsx
-import { useEffect } from 'react'
-import { Image, StyleSheet, Text, View } from 'react-native'
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
+import { ActivityIndicator, ImageBackground, StyleSheet, Text, View } from 'react-native'
 
 const Loader = () => {
-	const rotation = useSharedValue(0)
-
-	useEffect(() => {
-		rotation.value = withRepeat(
-			withTiming(360, { duration: 1200 }),
-			-1, // repite infinito
-			false, // no reversa
-		)
-	}, [])
-
-	const animatedStyle = useAnimatedStyle(() => ({
-		transform: [{ rotate: `${rotation.value}deg` }],
-	}))
-
 	return (
-		<View style={styles.container}>
-			{/* Logo de cancha */}
-			<Image source={require('@/assets/images/cancha_futbol.png')} style={styles.logo} resizeMode='contain' />
+		<ImageBackground source={require('@/assets/images/cancha_futbol.png')} style={styles.background} resizeMode='cover'>
+			<View style={styles.container}>
+				<ActivityIndicator size='large' color='#00FF5F' />
 
-			{/* Loader circular */}
-			<Animated.View style={[styles.circle, animatedStyle]} />
-
-			<Text style={styles.text}>Iniciando sesión...</Text>
-		</View>
+				<Text style={styles.text}>Iniciando sesión...</Text>
+			</View>
+		</ImageBackground>
 	)
 }
 
 const styles = StyleSheet.create({
+	background: {
+		flex: 1,
+		width: '100%',
+		height: '100%',
+	},
 	container: {
 		flex: 1,
-		backgroundColor: '#0A0A0A',
 		justifyContent: 'center',
 		alignItems: 'center',
 	},

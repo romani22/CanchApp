@@ -1,3 +1,4 @@
+import { styles } from '@/assets/styles/Register.styles'; // Importación de estilos externos
 import { supabase } from '@/lib/supabase'
 import { authService } from '@/services/auth.service'
 import { colors } from '@/theme/colors'
@@ -6,7 +7,6 @@ import { router } from 'expo-router'
 import { useState } from 'react'
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { styles } from '../../assets/styles/Register.styles'; // Importación de estilos externos
 
 const sports = [
 	{ id: 'futbol', label: 'Fútbol', icon: 'soccer' },
@@ -78,7 +78,7 @@ export default function Register() {
 
 			if (updateError) throw updateError
 
-			router.replace('/(tabs)/Dashboard')
+			router.replace('/(protected)/(tabs)/Dashboard')
 		} catch (err: any) {
 			setError(err.message)
 		} finally {

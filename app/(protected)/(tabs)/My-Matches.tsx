@@ -1,4 +1,4 @@
-import PersonalMatchesScreen from '@/app/match/PersonalMatches'
+import PersonalMatchesScreen from '@/app/(protected)/match/PersonalMatches'
 
 export default function MyMatchesScreen() {
 	return <PersonalMatchesScreen />

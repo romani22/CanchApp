@@ -1,3 +1,4 @@
+import { colors } from '@/theme/colors'
 import { StyleSheet } from 'react-native'
 
 export const styles = StyleSheet.create({
@@ -8,7 +9,7 @@ export const styles = StyleSheet.create({
 	},
 	container: {
 		flex: 1,
-		backgroundColor: '#0a0f0a',
+		backgroundColor: colors.backgroundDark,
 	},
 	scrollView: {
 		flex: 1,

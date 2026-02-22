@@ -1,4 +1,5 @@
 import { authService } from '@/services/auth.service'
+import { profilesService } from '@/services/profiles.service'
 import { Profile } from '@/types/database.types'
 import { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react'
@@ -32,57 +33,131 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const [profile, setProfile] = useState<Profile | null>(null)
 	const [isLoading, setIsLoading] = useState<boolean>(true)
 
+	/* ============================
+	   TIMEOUT HELPER
+	============================ */
+
+	const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => reject(new Error('Timeout')), ms)
+
+			promise
+				.then((value) => {
+					clearTimeout(timer)
+					resolve(value)
+				})
+				.catch((err) => {
+					clearTimeout(timer)
+					reject(err)
+				})
+		})
+	}
+
+	/* ============================
+	   INITIALIZE
+	============================ */
+
 	useEffect(() => {
+		let isMounted = true
+
 		const initialize = async () => {
-			const { data } = await authService.getSession()
-			const currentSession = data.session
+			try {
+				const { data } = await withTimeout(authService.getSession(), 10000)
+				const currentSession = data.session
 
-			setSession(currentSession)
-			setUser(currentSession?.user ?? null)
+				if (!isMounted) return
 
-			if (currentSession?.user) {
-				const profile = await authService.getProfile(currentSession.user.id)
-				setProfile(profile)
+				setSession(currentSession)
+				setUser(currentSession?.user ?? null)
+
+				if (currentSession?.user) {
+					const fullProfile = await withTimeout(loadFullProfile(currentSession.user.id), 10000)
+
+					if (!isMounted) return
+					setProfile(fullProfile)
+				}
+			} catch (error) {
+				console.log('Auth error:', error)
+
+				if (!isMounted) return
+
+				// SOLO limpiar estado (no navegar)
+				setUser(null)
+				setSession(null)
+				setProfile(null)
+			} finally {
+				if (isMounted) setIsLoading(false)
 			}
-
-			setIsLoading(false)
 		}
 
 		initialize()
 
 		const { data: listener } = authService.onAuthStateChange(async (_event: AuthChangeEvent, session: Session | null) => {
+			if (!isMounted) return
+
 			setSession(session)
 			setUser(session?.user ?? null)
 
-			if (session?.user) {
-				const profile = await authService.getProfile(session.user.id)
-				setProfile(profile)
-			} else {
+			// Si no hay sesión, limpiar profile y salir
+			if (!session?.user) {
+				setProfile(null)
+				return
+			}
+
+			try {
+				const fullProfile = await withTimeout(loadFullProfile(session.user.id), 10000)
+
+				if (!isMounted) return
+				setProfile(fullProfile)
+			} catch (error) {
+				console.log('Profile load error:', error)
+
+				// Solo limpiar estado
+				setUser(null)
+				setSession(null)
 				setProfile(null)
 			}
 		})
 
 		return () => {
+			isMounted = false
 			listener.subscription.unsubscribe()
 		}
 	}, [])
 
+	/* ============================
+	   PROFILE
+	============================ */
+
+	const loadFullProfile = async (userId: string) => {
+		const profileData = await profilesService.getById(userId)
+		if (!profileData) return null
+
+		const stats = await profilesService.getUserStats(userId)
+
+		return {
+			...profileData,
+			...stats,
+		}
+	}
+
 	const refreshProfile = async () => {
 		if (!user) return
-		const updatedProfile = await authService.getProfile(user.id)
-		setProfile(updatedProfile)
+
+		const fullProfile = await loadFullProfile(user.id)
+		setProfile(fullProfile)
 	}
 
 	const updateProfile = async (updates: Partial<Profile>) => {
 		if (!user) return { error: new Error('No user logged in') }
 
-		const { error } = await authService.updateProfile(user.id, updates)
-
-		if (!error) {
+		try {
+			await profilesService.updateProfile(user.id, updates)
 			await refreshProfile()
+			return { error: null }
+		} catch (error: any) {
+			return { error }
 		}
-
-		return { error }
 	}
 
 	/* ============================
@@ -94,7 +169,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		session,
 		profile,
 		isLoading,
-		isAuthenticated: !!session,
+		isAuthenticated: !!user, // importante
 		signIn: authService.signIn,
 		signUp: authService.signUp,
 		signOut: authService.signOut,
@@ -108,10 +183,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 export function useAuth(): AuthContextType {
 	const context = useContext(AuthContext)
-
-	if (!context) {
-		throw new Error('useAuth must be used within an AuthProvider')
-	}
-
+	if (!context) throw new Error('useAuth must be used within an AuthProvider')
 	return context
 }
