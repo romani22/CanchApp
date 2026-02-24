@@ -38,7 +38,10 @@ export function MatchProvider({ children }: { children: React.ReactNode }) {
 		setError(null)
 
 		try {
-			const { data } = await matchesService.list()
+			const { data, error } = await matchesService.list(filters)
+
+			if (error) throw error
+
 			setMatches(data ?? [])
 		} catch (err) {
 			console.error('Error fetching matches:', err)
@@ -46,7 +49,7 @@ export function MatchProvider({ children }: { children: React.ReactNode }) {
 		} finally {
 			setIsLoading(false)
 		}
-	}, [isAuthenticated])
+	}, [isAuthenticated, filters])
 
 	// Initial fetch
 	useEffect(() => {
@@ -73,20 +76,13 @@ export function MatchProvider({ children }: { children: React.ReactNode }) {
 		// }
 	}, [isAuthenticated, fetchMatches])
 
-	// Filter matches based on current filters
-	const filteredMatches = matches.filter((match) => {
-		if (filters.sport && match.sport !== filters.sport) return false
-		if (filters.date && match.date !== filters.date) return false
-		return true
-	})
-
 	const getMatchById = (id: string) => matches.find((m) => m.id === id)
 
 	return (
 		<MatchContext.Provider
 			value={{
 				matches,
-				filteredMatches,
+				filteredMatches: matches,
 				isLoading,
 				error,
 				filters,

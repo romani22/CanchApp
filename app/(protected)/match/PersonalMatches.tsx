@@ -24,11 +24,17 @@ export default function PersonalMatchesScreen() {
 		if (!user) return
 
 		try {
-			const [created, joined] = await Promise.all([matchesService.getById(user.id), matchesService.getJoined(user.id)])
+			setIsLoading(true)
 
-			setCreatedMatches(created.data || [])
-			// Filter out matches the user created from joined list
-			setJoinedMatches((joined.data || []).filter((m) => m.creator_id !== user.id))
+			const [createdRes, joinedRes] = await Promise.all([matchesService.getCreatedByUser(user.id), matchesService.getJoined(user.id)])
+
+			if (createdRes.error) throw createdRes.error
+			if (joinedRes.error) throw joinedRes.error
+
+			setCreatedMatches(createdRes.data || [])
+
+			// Sacamos los que él mismo creó
+			setJoinedMatches((joinedRes.data || []).filter((m) => m.creator_id !== user.id))
 		} catch (error) {
 			console.error('Error loading matches:', error)
 		} finally {
@@ -47,7 +53,7 @@ export default function PersonalMatchesScreen() {
 	}
 
 	const handleMatchPress = (match: MatchWithCreator) => {
-		router.push(`/match/${match.id}`)
+		router.push(`/(protected)/match/${match.id}`)
 	}
 
 	const matches = activeTab === 'created' ? createdMatches : joinedMatches

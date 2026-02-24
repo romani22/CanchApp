@@ -42,17 +42,6 @@ export default function TabsLayout() {
 			}}
 		>
 			<Tabs.Screen
-				name='Dashboard'
-				options={{
-					title: 'INICIO',
-					tabBarIcon: ({ focused, color, size }) => (
-						<View style={focused ? styles.selectTab : null}>
-							<MaterialIcons name='home' size={size} color={focused ? '#fff' : color} />
-						</View>
-					),
-				}}
-			/>
-			<Tabs.Screen
 				name='My-Matches'
 				options={{
 					title: 'Mis Turnos',
@@ -70,6 +59,17 @@ export default function TabsLayout() {
 					tabBarIcon: ({ focused, color, size }) => (
 						<View style={focused ? styles.selectTab : null}>
 							<FontAwesome5 name='search' size={size} color={focused ? '#fff' : color} />
+						</View>
+					),
+				}}
+			/>
+			<Tabs.Screen
+				name='Dashboard'
+				options={{
+					title: 'INICIO',
+					tabBarIcon: ({ focused, color, size }) => (
+						<View style={focused ? styles.selectTab : null}>
+							<MaterialIcons name='home' size={size} color={focused ? '#fff' : color} />
 						</View>
 					),
 				}}

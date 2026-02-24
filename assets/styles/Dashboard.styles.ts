@@ -117,7 +117,7 @@ export const styles = StyleSheet.create({
 		borderRadius: 12,
 		paddingHorizontal: 20,
 		paddingVertical: 12,
-		minWidth: 70,
+		minWidth: 95,
 		alignItems: 'center',
 	},
 	countdownNumber: {

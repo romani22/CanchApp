@@ -18,6 +18,7 @@ const sports: { key: SportType; label: string; icon: keyof typeof Ionicons.glyph
 	{ key: 'padel', label: 'Padel', icon: 'tennisball' },
 	{ key: 'basquet', label: 'Basquet', icon: 'basketball' },
 	{ key: 'voley', label: 'Voley', icon: 'baseball' },
+	{ key: 'tenis', label: 'Tenis', icon: 'tennisball' },
 ]
 
 const levels: { key: SkillLevel; label: string }[] = [
@@ -74,7 +75,7 @@ export default function CreateMatchScreen() {
 				is_mixed: false,
 			})
 
-			// Alert.alert('Exito', 'Tu partido ha sido publicado', [{ text: 'Ver Partido', onPress: () => router.replace(`/match/${match.id}`) }])
+			Alert.alert('Exito', 'Tu partido ha sido publicado', [{ text: 'Ver Partido', onPress: () => router.replace(`/match/${match.id}`) }])
 		} catch (error) {
 			console.error('Error creating match:', error)
 			Alert.alert('Error', 'No se pudo crear el partido')

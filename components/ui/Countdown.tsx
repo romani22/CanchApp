@@ -1,10 +1,8 @@
 import { styles } from '@/assets/styles/Dashboard.styles'
-import { supabase } from '@/lib/supabase'
-import { matchesService } from '@/services/matches.service'
 import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 
-export default function Countdown() {
+export default function Countdown({ date }: { date: string }) {
 	const [targetDate, setTargetDate] = useState<Date | null>(null)
 	const [countdown, setCountdown] = useState({
 		hours: 0,
@@ -14,27 +12,17 @@ export default function Countdown() {
 
 	const formatNumber = (num: number) => num.toString().padStart(2, '0')
 
-	// 🔥 Traer próximo partido
+	// 🔥 Actualiza targetDate cuando cambia la prop
 	useEffect(() => {
-		const loadNextMatch = async () => {
-			const {
-				data: { user },
-			} = await supabase.auth.getUser()
-			if (!user) return
-
-			const { data } = await matchesService.getNextMatchForUser(user.id)
-
-			if (data?.date) {
-				setTargetDate(new Date(data.date))
-			} else {
-				setTargetDate(null)
-			}
+		if (!date) {
+			setTargetDate(null)
+			return
 		}
 
-		loadNextMatch()
-	}, [])
+		setTargetDate(new Date(date))
+	}, [date])
 
-	// 🔥 Timer real basado en fecha
+	// 🔥 Timer
 	useEffect(() => {
 		if (!targetDate) {
 			setCountdown({ hours: 0, minutes: 0, seconds: 0 })
@@ -51,11 +39,15 @@ export default function Countdown() {
 				return
 			}
 
-			const hours = Math.floor((distance / (1000 * 60 * 60)) % 24)
+			const totalHours = Math.floor(distance / (1000 * 60 * 60))
 			const minutes = Math.floor((distance / (1000 * 60)) % 60)
 			const seconds = Math.floor((distance / 1000) % 60)
 
-			setCountdown({ hours, minutes, seconds })
+			setCountdown({
+				hours: totalHours,
+				minutes,
+				seconds,
+			})
 		}, 1000)
 
 		return () => clearInterval(timer)

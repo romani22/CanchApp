@@ -228,4 +228,136 @@ export const styles = StyleSheet.create({
 		...typography.buttonLarge,
 		color: colors.backgroundDark,
 	},
+	playersRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+	},
+	avatarList: {
+		flexDirection: 'row',
+		alignItems: 'center',
+	},
+	avatar: {
+		width: 45,
+		height: 45,
+		borderRadius: 22.5,
+		borderWidth: 2,
+		borderColor: '#051610',
+		marginRight: -10,
+	},
+	addPlayerButton: {
+		width: 45,
+		height: 45,
+		borderRadius: 22.5,
+		backgroundColor: '#143D2F',
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginLeft: 15,
+		borderWidth: 1,
+		borderColor: '#2D5A4A',
+	},
+	playersCount: {
+		color: '#BDC3C7',
+		fontSize: 16,
+	},
+	mapContainer: {
+		marginTop: 30,
+		height: 150,
+		borderRadius: 15,
+		overflow: 'hidden',
+		position: 'relative',
+	},
+	mapImage: {
+		width: '100%',
+		height: '100%',
+		opacity: 0.6,
+	},
+	mapOverlay: {
+		position: 'absolute',
+		top: '30%',
+		left: '40%',
+		alignItems: 'center',
+	},
+	mapText: {
+		color: 'white',
+		fontWeight: 'bold',
+		fontSize: 12,
+	},
+	verEnMapa: {
+		position: 'absolute',
+		bottom: 10,
+		left: 10,
+	},
+	verEnMapaText: {
+		color: '#BDC3C7',
+		fontSize: 12,
+		textDecorationLine: 'underline',
+	},
+	statsRow: {
+		flexDirection: 'row',
+		backgroundColor: '#0A261D', // Verde muy oscuro
+		borderRadius: 12,
+		marginTop: 20,
+		paddingVertical: 15,
+		borderWidth: 1,
+		borderColor: '#143D2F',
+	},
+	statItem: {
+		flex: 1,
+		alignItems: 'center',
+		gap: 5,
+	},
+	statBorder: {
+		borderLeftWidth: 1,
+		borderRightWidth: 1,
+		borderColor: '#143D2F',
+	},
+	statText: {
+		color: 'white',
+		fontSize: 12,
+		fontWeight: '500',
+	},
+	iconButton: {
+		backgroundColor: 'rgba(0,0,0,0.5)',
+		padding: 8,
+		borderRadius: 20,
+	},
+	contentContainer: {
+		padding: 20,
+		marginTop: -20,
+		borderTopLeftRadius: 25,
+		borderTopRightRadius: 25,
+		backgroundColor: '#051610',
+	},
+	title: {
+		fontSize: 28,
+		fontWeight: 'bold',
+		color: 'white',
+	},
+	subtitle: {
+		fontSize: 16,
+		color: '#BDC3C7',
+		marginTop: 5,
+	},
+	headerImage: {
+		width: '100%',
+		height: 250,
+	},
+	headerButtons: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		paddingHorizontal: 20,
+		paddingTop: 10,
+	},
+	mainButton: {
+		backgroundColor: '#00FF66', // El verde neón de tu imagen
+		paddingVertical: 18,
+		borderRadius: 15,
+		alignItems: 'center',
+	},
+	mainButtonText: {
+		color: 'black',
+		fontSize: 18,
+		fontWeight: 'bold',
+	},
 })

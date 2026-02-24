@@ -70,6 +70,9 @@ export default function ExploreScreen() {
 					<TouchableOpacity style={styles.headerButton}>
 						<Ionicons name='search-outline' size={24} color={colors.textPrimaryDark} />
 					</TouchableOpacity>
+					<TouchableOpacity style={styles.headerButton} onPress={() => router.push('/match/Create')}>
+						<Ionicons name='add' size={24} color={colors.textPrimaryDark} />
+					</TouchableOpacity>
 				</View>
 			</View>
 
@@ -90,9 +93,6 @@ export default function ExploreScreen() {
 			)}
 
 			{/* FAB */}
-			<TouchableOpacity style={styles.fab} onPress={() => router.push('/match/Create')} activeOpacity={0.8}>
-				<Ionicons name='add' size={32} color={colors.backgroundDark} />
-			</TouchableOpacity>
 		</SafeAreaView>
 	)
 }
