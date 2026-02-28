@@ -1,5 +1,5 @@
 import { styles } from '@/assets/styles/Personal-matches.styles'
-import { MatchCard } from '@/components/match/MatchCard'
+import { MatchCardComponent } from '@/components/match/MatchCard'
 import { useAuth } from '@/context/AuthContext'
 import { matchesService } from '@/services/matches.service'
 import { colors } from '@/theme/colors'
@@ -11,12 +11,14 @@ import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, Vi
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 type Tab = 'created' | 'joined'
-
+export type PersonalMatch = MatchWithCreator & {
+	relation: 'created' | 'joined'
+}
 export default function PersonalMatchesScreen() {
 	const { user } = useAuth()
 	const [activeTab, setActiveTab] = useState<Tab>('created')
-	const [createdMatches, setCreatedMatches] = useState<MatchWithCreator[]>([])
-	const [joinedMatches, setJoinedMatches] = useState<MatchWithCreator[]>([])
+	const [createdMatches, setCreatedMatches] = useState<PersonalMatch[]>([])
+	const [joinedMatches, setJoinedMatches] = useState<PersonalMatch[]>([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [refreshing, setRefreshing] = useState(false)
 
@@ -24,17 +26,25 @@ export default function PersonalMatchesScreen() {
 		if (!user) return
 
 		try {
-			setIsLoading(true)
-
 			const [createdRes, joinedRes] = await Promise.all([matchesService.getCreatedByUser(user.id), matchesService.getJoined(user.id)])
 
 			if (createdRes.error) throw createdRes.error
 			if (joinedRes.error) throw joinedRes.error
 
-			setCreatedMatches(createdRes.data || [])
+			const created = (createdRes.data || []).map((m) => ({
+				...m,
+				relation: 'created' as const,
+			}))
 
-			// Sacamos los que él mismo creó
-			setJoinedMatches((joinedRes.data || []).filter((m) => m.creator_id !== user.id))
+			const joined = (joinedRes.data || [])
+				.filter((m) => m.creator_id !== user.id)
+				.map((m) => ({
+					...m,
+					relation: 'joined' as const,
+				}))
+
+			setCreatedMatches(created)
+			setJoinedMatches(joined)
 		} catch (error) {
 			console.error('Error loading matches:', error)
 		} finally {
@@ -80,8 +90,7 @@ export default function PersonalMatchesScreen() {
 		</View>
 	)
 
-	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCard match={item} onPress={() => handleMatchPress(item)} />, [])
-
+	const renderItem = useCallback(({ item }: { item: PersonalMatch }) => <MatchCardComponent match={item} relation={item.relation} onPress={() => handleMatchPress(item)} />, [])
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
 			{/* Header */}

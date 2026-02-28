@@ -1,4 +1,4 @@
-import { MatchCard } from '@/components/match/MatchCard'
+import { MatchCardComponent } from '@/components/match/MatchCard'
 import { SportFilter } from '@/components/match/SportFilter'
 import { useAuth } from '@/context/AuthContext'
 import { useMatches } from '@/context/MatchContext'
@@ -51,7 +51,7 @@ export default function ExploreScreen() {
 		</View>
 	)
 
-	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCard match={item} onPress={() => handleMatchPress(item)} onJoin={() => handleJoinPress(item)} />, [])
+	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCardComponent match={item} onPress={() => handleMatchPress(item)} onJoin={() => handleJoinPress(item)} />, [])
 
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>

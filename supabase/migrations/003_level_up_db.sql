@@ -129,7 +129,7 @@ CHECK (
 -- 6️⃣ NUEVA VIEW PROFESIONAL
 -- =============================================
 
-CREATE OR REPLACE VIEW user_stats AS
+CREATE OR REPLACE VIEW public.user_stats AS
 SELECT
     p.id AS user_id,
     COUNT(DISTINCT mp.match_id) FILTER (

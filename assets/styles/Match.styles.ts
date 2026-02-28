@@ -360,4 +360,19 @@ export const styles = StyleSheet.create({
 		fontSize: 18,
 		fontWeight: 'bold',
 	},
+	guestAvatar: {
+		width: 40,
+		height: 40,
+		borderRadius: 20,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginRight: -10,
+		borderWidth: 2,
+		borderColor: '#fff',
+	},
+	avatarText: {
+		color: 'white',
+		fontWeight: 'bold',
+		fontSize: 16,
+	},
 })

@@ -56,26 +56,6 @@ export function MatchProvider({ children }: { children: React.ReactNode }) {
 		fetchMatches()
 	}, [fetchMatches])
 
-	// Subscribe to realtime updates
-	useEffect(() => {
-		if (!isAuthenticated) return
-
-		// const subscription = matchesService.subscribeToOpenMatches(({ eventType, match }) => {
-		// 	if (eventType === 'INSERT') {
-		// 		// Fetch the full match with relations
-		// 		fetchMatches()
-		// 	} else if (eventType === 'UPDATE') {
-		// 		setMatches((prev) => prev.map((m) => (m.id === match.id ? { ...m, ...match } : m)))
-		// 	} else if (eventType === 'DELETE') {
-		// 		setMatches((prev) => prev.filter((m) => m.id !== match.id))
-		// 	}
-		// })
-
-		// return () => {
-		// 	subscription.unsubscribe()
-		// }
-	}, [isAuthenticated, fetchMatches])
-
 	const getMatchById = (id: string) => matches.find((m) => m.id === id)
 
 	return (

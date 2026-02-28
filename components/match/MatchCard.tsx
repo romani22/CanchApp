@@ -1,7 +1,7 @@
 import { colors } from '@/theme/colors'
 import { borderRadius, spacing } from '@/theme/spacing'
 import { typography } from '@/theme/typography'
-import { MatchWithCreator, SkillLevel, SportType } from '@/types/database.types'
+import { MatchWithCreator, SkillLevel } from '@/types/database.types'
 import { getSportImage } from '@/Utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { format, isToday, isTomorrow, parseISO } from 'date-fns'
@@ -10,24 +10,9 @@ import { Image, ImageBackground, StyleSheet, Text, TouchableOpacity, View } from
 
 interface MatchCardProps {
 	match: MatchWithCreator
+	relation?: 'created' | 'joined'
 	onPress: () => void
 	onJoin?: () => void
-}
-
-const sportIcons: Record<SportType, keyof typeof Ionicons.glyphMap> = {
-	futbol: 'football',
-	padel: 'tennisball',
-	tenis: 'tennisball',
-	basquet: 'basketball',
-	voley: 'baseball',
-}
-
-const sportLabels: Record<SportType, string> = {
-	futbol: 'Futbol',
-	padel: 'Padel',
-	tenis: 'Tenis',
-	basquet: 'Basquet',
-	voley: 'Voley',
 }
 
 const levelLabels: Record<SkillLevel, string> = {
@@ -36,7 +21,7 @@ const levelLabels: Record<SkillLevel, string> = {
 	avanzado: 'Avanzado',
 }
 
-export function MatchCard({ match, onPress, onJoin }: MatchCardProps) {
+export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCardProps) {
 	const formatMatchDate = () => {
 		const date = parseISO(match.date)
 		if (isToday(date)) return 'Hoy'
@@ -59,6 +44,21 @@ export function MatchCard({ match, onPress, onJoin }: MatchCardProps) {
 				<View style={styles.badgeContainer}>
 					<View style={[styles.levelBadge, match.skill_level === 'intermedio' && styles.levelBadgeIntermediate, match.skill_level === 'avanzado' && styles.levelBadgeAdvanced]}>
 						<Text style={[styles.levelText, match.skill_level === 'intermedio' && styles.levelTextDark, match.skill_level === 'avanzado' && styles.levelTextDark]}>{levelLabels[match.skill_level]}</Text>
+					</View>
+					<View style={styles.topRightBadgeContainer}>
+						{relation === 'created' && (
+							<View style={styles.createdBadge}>
+								<Ionicons name='star' size={12} color={colors.backgroundDark} />
+								<Text style={styles.relationText}>Creador</Text>
+							</View>
+						)}
+
+						{relation === 'joined' && (
+							<View style={styles.joinedBadge}>
+								<Ionicons name='people' size={12} color={colors.backgroundDark} />
+								<Text style={styles.relationText}>Unido</Text>
+							</View>
+						)}
 					</View>
 				</View>
 			</ImageBackground>
@@ -269,5 +269,36 @@ const styles = StyleSheet.create({
 	joinButtonText: {
 		...typography.button,
 		color: colors.backgroundDark,
+	},
+	topRightBadgeContainer: {
+		position: 'absolute',
+		top: spacing.md,
+		right: spacing.md,
+	},
+
+	createdBadge: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+		backgroundColor: colors.success, // verde
+		paddingHorizontal: spacing.md,
+		paddingVertical: spacing.xs,
+		borderRadius: borderRadius.full,
+	},
+
+	joinedBadge: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+		backgroundColor: colors.info || colors.primary, // azul
+		paddingHorizontal: spacing.md,
+		paddingVertical: spacing.xs,
+		borderRadius: borderRadius.full,
+	},
+
+	relationText: {
+		...typography.labelSmall,
+		color: colors.backgroundDark,
+		fontWeight: '700',
 	},
 })

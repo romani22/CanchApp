@@ -69,13 +69,14 @@ export const matchesService = {
 				participants:match_participants(
 					id,
 					user_id,
+					guest_name,
 					joined_at,
 					user:profiles(
-					id,
-					full_name,
-					avatar_url,
-					rating,
-					elo_rating
+						id,
+						full_name,
+						avatar_url,
+						rating,
+						elo_rating
 					)
 				)
 				`,

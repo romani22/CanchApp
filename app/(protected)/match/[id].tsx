@@ -1,4 +1,5 @@
 import { styles } from '@/assets/styles/Match.styles'
+import Loader from '@/components/ui/Loader'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
@@ -8,8 +9,9 @@ import { getSportImage } from '@/Utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Image, ImageBackground, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, ImageBackground, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import ParticipantsMatch from './ParticipantsMatch'
 
 export default function MatchDetail() {
 	const { id } = useLocalSearchParams()
@@ -59,11 +61,6 @@ export default function MatchDetail() {
 		}
 	}
 
-	const isParticipant = match?.participants?.some((p: any) => p.user_id === user?.id)
-
-	const isFull = match?.status === 'full'
-	const isOpen = match?.status === 'open'
-
 	const handleJoin = async () => {
 		if (!user || !isOpen || isFull || isParticipant) return
 
@@ -100,15 +97,15 @@ export default function MatchDetail() {
 		}
 	}
 
-	if (loading) {
-		return (
-			<View style={styles.container}>
-				<ActivityIndicator size='large' color={colors.primary} />
-			</View>
-		)
-	}
+	if (loading) return <Loader />
 
 	if (!match) return null
+
+	const currentPlayers = match.participants?.length || 0
+	const isFull = currentPlayers >= match.total_players
+	const isOpen = match.status === 'open'
+	const isParticipant = match.participants?.some((p: any) => p.user_id === user?.id)
+
 	return (
 		<View style={styles.container}>
 			<ScrollView bounces={false} contentContainerStyle={styles.scrollContent}>
@@ -140,20 +137,12 @@ export default function MatchDetail() {
 						<View style={styles.statItem}>
 							<Ionicons name='people-outline' size={20} color={colors.primary} />
 							<Text style={styles.statText}>
-								{match.current_players} / {match.total_players}
+								{currentPlayers} / {match.total_players}
 							</Text>
 						</View>
 					</View>
 
-					<View style={styles.section}>
-						<Text style={styles.sectionTitle}>Jugadores</Text>
-
-						<View style={styles.avatarList}>
-							{match.participants.map((p: any) => (
-								<Image key={p.id} source={{ uri: p.user.avatar_url }} style={styles.avatar} />
-							))}
-						</View>
-					</View>
+					<ParticipantsMatch match={match} />
 
 					<View style={styles.mapContainer}>
 						<View style={styles.mapOverlay}>
@@ -166,7 +155,7 @@ export default function MatchDetail() {
 
 			<View style={styles.footer}>
 				{isParticipant ? (
-					<TouchableOpacity style={styles.mainButton} onPress={handleLeave} disabled={actionLoading}>
+					<TouchableOpacity style={styles.mainButton} onPress={handleLeave} disabled={isFull || actionLoading || isParticipant}>
 						{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
 					</TouchableOpacity>
 				) : (

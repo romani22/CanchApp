@@ -2,6 +2,7 @@ import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
 import { useAuth } from '@/context/AuthContext'
 import { matchesService } from '@/services/matches.service'
+import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
 import { SkillLevel, SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
@@ -42,6 +43,8 @@ export default function CreateMatchScreen() {
 	const [playersNeeded, setPlayersNeeded] = useState(4)
 	const [skillLevel, setSkillLevel] = useState<SkillLevel>('intermedio')
 	const [description, setDescription] = useState('')
+	const [guests, setGuests] = useState<string[]>([])
+	const [guestName, setGuestName] = useState('')
 
 	const handleCreateMatch = async () => {
 		if (!user) {
@@ -54,7 +57,7 @@ export default function CreateMatchScreen() {
 			return
 		}
 
-		if (playersNeeded > totalPlayers - 1) {
+		if (guests.length + 1 > totalPlayers) {
 			Alert.alert('Error', 'Los jugadores faltantes no pueden ser mas que el total menos tu')
 			return
 		}
@@ -74,6 +77,11 @@ export default function CreateMatchScreen() {
 				skill_level: skillLevel,
 				is_mixed: false,
 			})
+			await matchParticipantsService.join(match.id, user.id)
+
+			for (const guest of guests) {
+				await matchParticipantsService.addGuest(match.id, guest)
+			}
 
 			Alert.alert('Exito', 'Tu partido ha sido publicado', [{ text: 'Ver Partido', onPress: () => router.replace(`/match/${match.id}`) }])
 		} catch (error) {
@@ -200,6 +208,47 @@ export default function CreateMatchScreen() {
 							</TouchableOpacity>
 						</View>
 					</View>
+				</View>
+				{/* Confirmados manualmente */}
+				<View style={styles.section}>
+					<Text style={styles.sectionTitle}>Agregar jugadores confirmados (opcional)</Text>
+
+					<View style={{ flexDirection: 'row', gap: 8 }}>
+						<TextInput style={[styles.input, { flex: 1 }]} placeholder='Nombre del jugador' placeholderTextColor={colors.textSecondaryDark} value={guestName} onChangeText={setGuestName} />
+
+						<TouchableOpacity
+							style={[styles.counterButton, styles.counterButtonActive]}
+							onPress={() => {
+								if (!guestName.trim()) return
+								setGuests((prev) => [...prev, guestName.trim()])
+								setGuestName('')
+							}}
+						>
+							<Ionicons name='add' size={20} color={colors.backgroundDark} />
+						</TouchableOpacity>
+					</View>
+
+					{guests.length > 0 && (
+						<View style={{ marginTop: 10 }}>
+							{guests.map((g, index) => (
+								<View
+									key={index}
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										alignItems: 'center',
+										marginBottom: 6,
+									}}
+								>
+									<Text style={{ color: colors.textPrimaryDark }}>{g}</Text>
+
+									<TouchableOpacity onPress={() => setGuests((prev) => prev.filter((_, i) => i !== index))}>
+										<Ionicons name='close-circle' size={20} color='red' />
+									</TouchableOpacity>
+								</View>
+							))}
+						</View>
+					)}
 				</View>
 
 				{/* Skill Level */}

@@ -2,8 +2,9 @@ import { styles } from '@/assets/styles/Dashboard.styles'
 import { MatchCard, matchesService } from '@/services/matches.service'
 import { getSportImage } from '@/Utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
+import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Image, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native'
 
 export default function Recomendations() {
 	const [recommendedMatches, setRecommendedMatches] = useState<MatchCard[]>([])
@@ -23,6 +24,13 @@ export default function Recomendations() {
 		} finally {
 			setLoading(false)
 		}
+	}
+	const handleMatchPress = (match: MatchCard) => {
+		router.push(`/match/${match.id}`)
+	}
+
+	const handleJoinPress = (match: MatchCard) => {
+		router.push(`/match/${match.id}`)
 	}
 
 	return (
@@ -47,15 +55,17 @@ export default function Recomendations() {
 				</View>
 			)}
 
-			{recommendedMatches.map((match) => (
-				<View key={match.id} style={styles.matchCard}>
-					<View style={styles.matchImageContainer}>
-						<Image source={getSportImage(match.sport)} style={styles.matchImage} resizeMode='cover' />
+			{recommendedMatches.map((item) => (
+				<TouchableOpacity key={item.id} style={styles.container} onPress={() => handleMatchPress(item)} activeOpacity={0.9}>
+					<View style={styles.matchCard}>
+						<View style={styles.matchImageContainer}>
+							<Image source={getSportImage(item.sport)} style={styles.matchImage} resizeMode='cover' />
+						</View>
+						<View style={styles.matchInfo}>
+							<Text style={styles.matchTitle}>{item.title}</Text>
+						</View>
 					</View>
-					<View style={styles.matchInfo}>
-						<Text style={styles.matchTitle}>{match.title}</Text>
-					</View>
-				</View>
+				</TouchableOpacity>
 			))}
 		</>
 	)
