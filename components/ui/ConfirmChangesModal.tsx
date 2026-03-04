@@ -13,7 +13,6 @@ interface ConfirmChangesModalProps {
 }
 
 export default function ConfirmChangesModal({ visible, title = '¿Guardar cambios?', description = 'Se actualizará la información de tu perfil.', onConfirm, onDiscard, onCancel, loading = false }: ConfirmChangesModalProps) {
-	console.log()
 	return (
 		<Modal visible={visible} animationType='fade' transparent>
 			<View style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', alignItems: 'center' }}>

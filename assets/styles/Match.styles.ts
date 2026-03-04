@@ -370,6 +370,16 @@ export const styles = StyleSheet.create({
 		borderWidth: 2,
 		borderColor: '#fff',
 	},
+	guestAvatarCard: {
+		width: 30,
+		height: 30,
+		borderRadius: 20,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginRight: -10,
+		borderWidth: 1,
+		borderColor: '#fff',
+	},
 	avatarText: {
 		color: 'white',
 		fontWeight: 'bold',

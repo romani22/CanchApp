@@ -33,10 +33,21 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 		setLoading(true)
 		setError(null)
 
-		const { error } = await signIn(email, password)
+		// const { error } = await signIn(email, password)
+		const { error } = await signIn('jose.romani@hotmail.com', '38112034Jose')
 		if (error) {
-			setError(error.message)
+			if (error.message.includes('Invalid login credentials')) {
+				setError('Email o contraseña incorrectos')
+			} else if (error.message.includes('Email not confirmed')) {
+				setError('Debes confirmar tu email antes de ingresar')
+			} else {
+				setError('Ocurrió un error inesperado')
+			}
+
+			setLoading(false)
+			return
 		}
+
 		setLoading(false)
 		router.replace('/(protected)/(tabs)/Dashboard')
 	}
@@ -58,7 +69,7 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 		<>
 			{loading ? (
 				<>
-					<Loader />
+					<Loader title='Iniciando Sesion...' />
 				</>
 			) : (
 				<ImageBackground source={images[index]} style={styles.background} resizeMode='cover'>

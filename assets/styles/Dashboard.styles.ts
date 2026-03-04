@@ -112,6 +112,14 @@ export const styles = StyleSheet.create({
 	countdownItem: {
 		alignItems: 'center',
 	},
+	countdownBoxDay: {
+		backgroundColor: '#1a2e1a',
+		borderRadius: 12,
+		paddingHorizontal: 20,
+		paddingVertical: 12,
+		minWidth: 50,
+		alignItems: 'center',
+	},
 	countdownBox: {
 		backgroundColor: '#1a2e1a',
 		borderRadius: 12,

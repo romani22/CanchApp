@@ -77,8 +77,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 					setProfile(fullProfile)
 				}
 			} catch (error) {
-				console.log('Auth error:', error)
-
 				if (!isMounted) return
 
 				// SOLO limpiar estado (no navegar)

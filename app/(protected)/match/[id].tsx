@@ -97,7 +97,7 @@ export default function MatchDetail() {
 		}
 	}
 
-	if (loading) return <Loader />
+	if (loading) return <Loader title='Cargando detalles del partido...' />
 
 	if (!match) return null
 
@@ -125,7 +125,7 @@ export default function MatchDetail() {
 						<View style={styles.statItem}>
 							<Ionicons name='time-outline' size={20} color={colors.primary} />
 							<Text style={styles.statText}>
-								{match.date} {match.start_time}
+								{match.starts_at.split('T')[0]} {match.starts_at.split('T')[1].substring(0, 5)}
 							</Text>
 						</View>
 

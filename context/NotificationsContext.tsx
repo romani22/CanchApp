@@ -6,25 +6,19 @@ interface NotificationsContextType {
 	refreshCount: () => Promise<void>
 }
 
-interface NotificationsProviderProps {
-	children: ReactNode
-}
-
 const NotificationsContext = createContext<NotificationsContextType>({
 	unreadCount: 0,
 	refreshCount: async () => {},
 })
 
-export const NotificationsProvider = ({ children }: NotificationsProviderProps) => {
+export const NotificationsProvider = ({ children }: { children: ReactNode }) => {
 	const [unreadCount, setUnreadCount] = useState(0)
+	const [userId, setUserId] = useState<string | null>(null)
 
 	const refreshCount = async () => {
-		const {
-			data: { user },
-		} = await supabase.auth.getUser()
-		if (!user) return
+		if (!userId) return
 
-		const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false)
+		const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('is_read', false)
 
 		setUnreadCount(count ?? 0)
 	}
@@ -36,23 +30,38 @@ export const NotificationsProvider = ({ children }: NotificationsProviderProps) 
 			const {
 				data: { user },
 			} = await supabase.auth.getUser()
+
 			if (!user) return
 
+			setUserId(user.id)
 			await refreshCount()
 
-			// 🔥 Realtime listener
 			channel = supabase
 				.channel('notifications-channel')
 				.on(
 					'postgres_changes',
 					{
-						event: '*',
+						event: 'INSERT',
 						schema: 'public',
 						table: 'notifications',
 						filter: `user_id=eq.${user.id}`,
 					},
 					() => {
-						refreshCount()
+						setUnreadCount((prev) => prev + 1)
+					},
+				)
+				.on(
+					'postgres_changes',
+					{
+						event: 'UPDATE',
+						schema: 'public',
+						table: 'notifications',
+						filter: `user_id=eq.${user.id}`,
+					},
+					(payload) => {
+						if (payload.old.is_read === false && payload.new.is_read === true) {
+							setUnreadCount((prev) => Math.max(prev - 1, 0))
+						}
 					},
 				)
 				.subscribe()
@@ -61,9 +70,7 @@ export const NotificationsProvider = ({ children }: NotificationsProviderProps) 
 		setup()
 
 		return () => {
-			if (channel) {
-				supabase.removeChannel(channel)
-			}
+			if (channel) supabase.removeChannel(channel)
 		}
 	}, [])
 

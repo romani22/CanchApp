@@ -1,12 +1,12 @@
 import { ActivityIndicator, ImageBackground, StyleSheet, Text, View } from 'react-native'
 
-const Loader = () => {
+const Loader = ({ title }: { title: string }) => {
 	return (
 		<ImageBackground source={require('@/assets/images/cancha_futbol.png')} style={styles.background} resizeMode='cover'>
 			<View style={styles.container}>
 				<ActivityIndicator size='large' color='#00FF5F' />
 
-				<Text style={styles.text}>Iniciando sesión...</Text>
+				<Text style={styles.text}>{title}</Text>
 			</View>
 		</ImageBackground>
 	)

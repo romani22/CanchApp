@@ -6,7 +6,7 @@ export default function AuthLayout() {
 	const { isLoading } = useAuth()
 
 	if (isLoading) {
-		return <Loader />
+		return <Loader title='Iniciando Sesion...' />
 	}
 
 	return <Stack screenOptions={{ headerShown: false }} />

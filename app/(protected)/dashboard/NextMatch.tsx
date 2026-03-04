@@ -25,7 +25,6 @@ export default function NextMatches() {
 				console.error(error)
 				return
 			}
-			console.log(data)
 			setNextMatch(data ?? null)
 		}
 
@@ -47,7 +46,7 @@ export default function NextMatches() {
 				<>
 					<View style={styles.nextMatchHeader}>
 						<View style={styles.todayBadge}>
-							<Text style={styles.todayBadgeText}>{nextMatch.date}</Text>
+							<Text style={styles.todayBadgeText}>{nextMatch.starts_at.split('T')[0]}</Text>
 						</View>
 
 						<View style={styles.locationContainer}>
@@ -59,10 +58,10 @@ export default function NextMatches() {
 					<Text style={styles.nextMatchTitle}>Tu próximo partido</Text>
 
 					<Text style={styles.nextMatchSubtitle}>
-						{nextMatch.sport} • {nextMatch.start_time} hs
+						{nextMatch.sport} • {nextMatch.starts_at.split('T')[1].substring(0, 5)} hs
 					</Text>
 
-					<Countdown date={`${nextMatch.date}T${nextMatch.start_time}`} />
+					<Countdown date={`${nextMatch.starts_at}`} />
 
 					<TouchableOpacity style={styles.detailsButton} onPress={goToDetails}>
 						<Text style={styles.detailsButtonText}>Ver detalles del partido</Text>

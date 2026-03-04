@@ -9,7 +9,7 @@ function RootNavigation() {
 	const { isLoading } = useAuth()
 
 	if (isLoading) {
-		return <Loader />
+		return <Loader title='Cargando...' />
 	}
 
 	return <Slot />

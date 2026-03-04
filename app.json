@@ -11,10 +11,11 @@
 		"newArchEnabled": true,
 		"ios": {
 			"icon": "./assets/images/Logo/appstore.png",
-			"bundleIdentifier": "com.tuusuario.canchapp",
+			"bundleIdentifier": "com.romani22.canchapp",
 			"supportsTablet": true
 		},
 		"android": {
+			"package": "com.romani22.canchapp",
 			"adaptiveIcon": {
 				"foregroundImage": "./assets/images/Logo/playstore.png",
 				"backgroundColor": "#ffffff"

@@ -63,7 +63,6 @@ export const authService = {
 			email,
 			password,
 		})
-
 		return { error: error ?? null }
 	},
 

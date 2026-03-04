@@ -77,8 +77,7 @@ export interface Database {
 					sport: SportType
 					title: string
 					description: string | null
-					date: string
-					start_time: string
+					starts_at: string
 					end_time: string | null
 					venue_name: string
 					venue_address: string | null
@@ -99,8 +98,7 @@ export interface Database {
 					sport: SportType
 					title: string
 					description?: string | null
-					date: string
-					start_time: string
+					starts_at: string
 					end_time?: string | null
 					venue_name: string
 					venue_address?: string | null
@@ -120,8 +118,7 @@ export interface Database {
 					sport?: SportType
 					title?: string
 					description?: string | null
-					date?: string
-					start_time?: string
+					starts_at?: string
 					end_time?: string | null
 					venue_name?: string
 					venue_address?: string | null

@@ -24,7 +24,7 @@ const mapMatchToCard = (match: Match): MatchCard => {
 		title: match.title,
 		sport: match.sport,
 		location: match.venue_name,
-		dateTime: `${match.date} ${match.start_time}`,
+		dateTime: format(new Date(match.starts_at), 'dd/MM/yyyy HH:mm'),
 		spotsLeft,
 		level: match.skill_level,
 		isMixed: match.is_mixed,
@@ -42,16 +42,29 @@ export const matchesService = {
 			.from('matches')
 			.select(
 				`
-			*,
-			creator:profiles!matches_creator_id_fkey(*)
-		`,
+					*,
+					creator:profiles!matches_creator_id_fkey(*),
+					participants:match_participants(
+						id,
+						user_id,
+						guest_name,
+						joined_at,
+						user:profiles(
+								id,
+								full_name,
+								avatar_url,
+								rating,
+								elo_rating
+							)
+					)
+				`,
 			)
 			.eq('status', 'open')
-			.or(`date.gt.${today},and(date.eq.${today},start_time.gte.${currentTime})`)
+			.gte('starts_at', now)
 
 		if (filters?.sport) query = query.eq('sport', filters.sport)
 
-		return query.order('date', { ascending: true }).order('start_time', { ascending: true })
+		return query.order('starts_at', { ascending: true })
 	},
 	async getById(matchId: string) {
 		return supabase
@@ -99,34 +112,29 @@ export const matchesService = {
 					`,
 			)
 			.eq('creator_id', userId)
-			.order('date', { ascending: true })
+			.order('starts_at', { ascending: true })
 	},
 	getJoined(userId: string) {
 		return supabase
 			.from('matches')
 			.select(
 				`
-      *,
-      creator:profiles!matches_creator_id_fkey(*),
-      winner:profiles!matches_winner_id_fkey(*),
-      participants:match_participants!inner(
-        *,
-        user:profiles(*)
-      )
-    `,
+					*,
+					creator:profiles!matches_creator_id_fkey(*),
+					winner:profiles!matches_winner_id_fkey(*),
+					participants:match_participants!inner(
+						*,
+						user:profiles(*)
+					)
+				`,
 			)
 			.eq('participants.user_id', userId)
-			.order('date', { ascending: true })
+			.order('starts_at', { ascending: true })
 	},
 
 	async getRecommendedMatches(limit: number = 5): Promise<MatchCard[]> {
-		const now = new Date()
-
-		const today = format(now, 'yyyy-MM-dd')
-		const currentTime = format(now, 'yyyy-MM-dd HH:mm:ss')
-
-		const { data, error } = await supabase.from('matches').select('*').eq('status', 'open').or(`date.gt.${today},and(date.eq.${today},start_time.gte.${currentTime})`).order('date', { ascending: true }).order('start_time', { ascending: true }).limit(limit)
-
+		const now = new Date().toISOString()
+		const { data, error } = await supabase.from('matches').select('*').eq('status', 'open').gte('starts_at', now).order('starts_at', { ascending: true }).limit(limit)
 		if (error) {
 			console.error(error)
 			throw error
@@ -136,8 +144,6 @@ export const matchesService = {
 	},
 	async getNextMatchForUser(userId: string) {
 		const now = new Date()
-		const today = format(now, 'yyyy-MM-dd')
-		const currentTime = format(now, 'HH:mm:ss')
 
 		// 1️⃣ Partidos creados por el usuario
 		const createdQuery = supabase.from('matches').select('*').eq('creator_id', userId)
@@ -147,9 +153,9 @@ export const matchesService = {
 			.from('matches')
 			.select(
 				`
-			*,
-			match_participants!inner(user_id)
-		`,
+					*,
+					match_participants!inner(user_id)
+				`,
 			)
 			.eq('match_participants.user_id', userId)
 
@@ -159,17 +165,8 @@ export const matchesService = {
 		const allMatches = [...(created || []), ...(joined || [])]
 
 		// 4️⃣ Filtramos fecha/hora en JS
-		const upcoming = allMatches
-			.filter((match) => {
-				if (match.date > today) return true
-				if (match.date === today && match.start_time >= currentTime) return true
-				return false
-			})
-			.sort((a, b) => {
-				if (a.date === b.date) return a.start_time.localeCompare(b.start_time)
-				return a.date.localeCompare(b.date)
-			})
 
+		const upcoming = allMatches.filter((match) => new Date(match.starts_at) >= now).sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
 		return {
 			data: upcoming[0] ?? null,
 			error: null,

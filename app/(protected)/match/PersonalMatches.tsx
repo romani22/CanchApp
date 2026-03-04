@@ -5,20 +5,22 @@ import { matchesService } from '@/services/matches.service'
 import { colors } from '@/theme/colors'
 import { MatchWithCreator } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
+import { isAfter, parseISO } from 'date-fns'
 import { router } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-
-type Tab = 'created' | 'joined'
+type Tab = 'created' | 'joined' | 'history'
 export type PersonalMatch = MatchWithCreator & {
-	relation: 'created' | 'joined'
+	relation: 'created' | 'joined' | 'history'
 }
 export default function PersonalMatchesScreen() {
 	const { user } = useAuth()
+
 	const [activeTab, setActiveTab] = useState<Tab>('created')
 	const [createdMatches, setCreatedMatches] = useState<PersonalMatch[]>([])
 	const [joinedMatches, setJoinedMatches] = useState<PersonalMatch[]>([])
+	const [historyMatches, setHistoryMatches] = useState<PersonalMatch[]>([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [refreshing, setRefreshing] = useState(false)
 
@@ -30,6 +32,8 @@ export default function PersonalMatchesScreen() {
 
 			if (createdRes.error) throw createdRes.error
 			if (joinedRes.error) throw joinedRes.error
+
+			const now = new Date()
 
 			const created = (createdRes.data || []).map((m) => ({
 				...m,
@@ -43,8 +47,16 @@ export default function PersonalMatchesScreen() {
 					relation: 'joined' as const,
 				}))
 
-			setCreatedMatches(created)
-			setJoinedMatches(joined)
+			// 🔥 Separar activos y pasados
+			const activeCreated = created.filter((m) => isAfter(parseISO(m.starts_at), now))
+
+			const activeJoined = joined.filter((m) => isAfter(parseISO(m.starts_at), now))
+
+			const history = [...created, ...joined].filter((m) => !isAfter(parseISO(m.starts_at), now))
+
+			setCreatedMatches(activeCreated)
+			setJoinedMatches(activeJoined)
+			setHistoryMatches(history)
 		} catch (error) {
 			console.error('Error loading matches:', error)
 		} finally {
@@ -66,8 +78,11 @@ export default function PersonalMatchesScreen() {
 		router.push(`/(protected)/match/${match.id}`)
 	}
 
-	const matches = activeTab === 'created' ? createdMatches : joinedMatches
+	let matches: PersonalMatch[] = []
 
+	if (activeTab === 'created') matches = createdMatches
+	if (activeTab === 'joined') matches = joinedMatches
+	if (activeTab === 'history') matches = historyMatches
 	const renderEmpty = () => (
 		<View style={styles.emptyContainer}>
 			<Ionicons name={activeTab === 'created' ? 'add-circle-outline' : 'search-outline'} size={64} color={colors.textSecondaryDark} />
@@ -106,6 +121,9 @@ export default function PersonalMatchesScreen() {
 					</TouchableOpacity>
 					<TouchableOpacity style={[styles.tab, activeTab === 'joined' && styles.tabActive]} onPress={() => setActiveTab('joined')}>
 						<Text style={[styles.tabText, activeTab === 'joined' && styles.tabTextActive]}>Unidos ({joinedMatches.length})</Text>
+					</TouchableOpacity>
+					<TouchableOpacity style={[styles.tab, activeTab === 'history' && styles.tabActive]} onPress={() => setActiveTab('history')}>
+						<Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>Finalizados ({historyMatches.length})</Text>
 					</TouchableOpacity>
 				</View>
 			</View>
