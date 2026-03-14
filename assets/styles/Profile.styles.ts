@@ -293,4 +293,57 @@ export const styles = StyleSheet.create({
 		borderRadius: 8,
 		alignItems: 'center',
 	},
+	modalOverlay: {
+		flex: 1,
+		backgroundColor: 'rgba(0,0,0,0.7)',
+		justifyContent: 'center',
+		alignItems: 'center',
+	},
+
+	passwordModal: {
+		width: '85%',
+		backgroundColor: '#1c1c1c',
+		borderRadius: 16,
+		padding: 20,
+	},
+
+	modalTitle: {
+		color: 'white',
+		fontSize: 18,
+		fontWeight: '600',
+		marginBottom: 16,
+		textAlign: 'center',
+	},
+
+	modalInput: {
+		backgroundColor: '#2a2a2a',
+		color: 'white',
+		borderRadius: 10,
+		padding: 12,
+		marginBottom: 12,
+		borderWidth: 1,
+		borderColor: '#3a3a3a',
+	},
+
+	modalButton: {
+		backgroundColor: colors.primary,
+		padding: 12,
+		borderRadius: 10,
+		alignItems: 'center',
+		marginTop: 10,
+	},
+
+	modalButtonText: {
+		color: 'white',
+		fontWeight: '600',
+	},
+
+	modalCancel: {
+		alignItems: 'center',
+		marginTop: 12,
+	},
+
+	modalCancelText: {
+		color: '#aaa',
+	},
 })

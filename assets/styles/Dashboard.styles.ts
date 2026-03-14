@@ -1,4 +1,5 @@
 import { colors } from '@/theme/colors'
+import { typography } from '@/theme/typography'
 import { StyleSheet } from 'react-native'
 
 export const styles = StyleSheet.create({
@@ -42,8 +43,8 @@ export const styles = StyleSheet.create({
 		marginLeft: 12,
 	},
 	welcomeText: {
-		fontSize: 12,
-		color: '#9ca3af',
+		...typography.labelSmall,
+		color: colors.textSecondaryDark,
 	},
 	userName: {
 		fontSize: 18,
@@ -112,20 +113,11 @@ export const styles = StyleSheet.create({
 	countdownItem: {
 		alignItems: 'center',
 	},
-	countdownBoxDay: {
-		backgroundColor: '#1a2e1a',
-		borderRadius: 12,
-		paddingHorizontal: 20,
-		paddingVertical: 12,
-		minWidth: 50,
-		alignItems: 'center',
-	},
 	countdownBox: {
 		backgroundColor: '#1a2e1a',
 		borderRadius: 12,
 		paddingHorizontal: 20,
 		paddingVertical: 12,
-		minWidth: 95,
 		alignItems: 'center',
 	},
 	countdownNumber: {

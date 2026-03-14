@@ -7,7 +7,6 @@ export const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 		backgroundColor: colors.backgroundDark,
-		alignItems: 'center',
 		paddingHorizontal: spacing.lg,
 		paddingVertical: spacing.md,
 		borderBottomWidth: 1,

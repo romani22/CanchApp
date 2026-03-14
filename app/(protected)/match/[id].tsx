@@ -11,7 +11,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, ImageBackground, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import ParticipantsMatch from './ParticipantsMatch'
+import ParticipantsMatch from '../../../components/match/ParticipantsMatch'
 
 export default function MatchDetail() {
 	const { id } = useLocalSearchParams()

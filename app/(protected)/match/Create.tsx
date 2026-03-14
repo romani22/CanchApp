@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
-import { SkillLevel, SportType } from '@/types/database.types'
+import { Guest, SkillLevel, SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { format } from 'date-fns'
@@ -43,7 +43,7 @@ export default function CreateMatchScreen() {
 	const [playersNeeded, setPlayersNeeded] = useState(4)
 	const [skillLevel, setSkillLevel] = useState<SkillLevel>('intermedio')
 	const [description, setDescription] = useState('')
-	const [guests, setGuests] = useState<string[]>([])
+	const [guests, setGuests] = useState<Guest[]>([])
 	const [guestName, setGuestName] = useState('')
 
 	const handleCreateMatch = async () => {
@@ -69,8 +69,7 @@ export default function CreateMatchScreen() {
 				sport,
 				title: `${sports.find((s) => s.key === sport)?.label} ${totalPlayers > 6 ? '5' : '3'}v${totalPlayers > 6 ? '5' : '3'}`,
 				description: description.trim() || undefined,
-				date: format(date, 'yyyy-MM-dd'),
-				start_time: format(time, 'HH:mm'),
+				starts_at: new Date(date.getFullYear(), date.getMonth(), date.getDate(), time.getHours(), time.getMinutes()).toISOString(),
 				venue_name: venueName.trim(),
 				total_players: totalPlayers,
 				players_needed: playersNeeded,
@@ -80,7 +79,7 @@ export default function CreateMatchScreen() {
 			await matchParticipantsService.join(match.id, user.id)
 
 			for (const guest of guests) {
-				await matchParticipantsService.addGuest(match.id, guest)
+				await matchParticipantsService.addGuest(match.id, guest.name)
 			}
 
 			Alert.alert('Exito', 'Tu partido ha sido publicado', [{ text: 'Ver Partido', onPress: () => router.replace(`/match/${match.id}`) }])
@@ -213,14 +212,14 @@ export default function CreateMatchScreen() {
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Agregar jugadores confirmados (opcional)</Text>
 
-					<View style={{ flexDirection: 'row', gap: 8 }}>
+					<View style={styles.guestInputRow}>
 						<TextInput style={[styles.input, { flex: 1 }]} placeholder='Nombre del jugador' placeholderTextColor={colors.textSecondaryDark} value={guestName} onChangeText={setGuestName} />
 
 						<TouchableOpacity
 							style={[styles.counterButton, styles.counterButtonActive]}
 							onPress={() => {
 								if (!guestName.trim()) return
-								setGuests((prev) => [...prev, guestName.trim()])
+								setGuests((prev) => [...prev, { id: Date.now().toString(), name: guestName.trim() }])
 								setGuestName('')
 							}}
 						>
@@ -229,20 +228,12 @@ export default function CreateMatchScreen() {
 					</View>
 
 					{guests.length > 0 && (
-						<View style={{ marginTop: 10 }}>
+						<View style={styles.guestListContainer}>
 							{guests.map((g, index) => (
-								<View
-									key={index}
-									style={{
-										flexDirection: 'row',
-										justifyContent: 'space-between',
-										alignItems: 'center',
-										marginBottom: 6,
-									}}
-								>
-									<Text style={{ color: colors.textPrimaryDark }}>{g}</Text>
+								<View key={index} style={styles.guestRow}>
+									<Text style={{ color: colors.textPrimaryDark }}>{g.name}</Text>
 
-									<TouchableOpacity onPress={() => setGuests((prev) => prev.filter((_, i) => i !== index))}>
+									<TouchableOpacity onPress={() => setGuests((prev) => [...prev.filter((guest) => guest.id !== g.id)])}>
 										<Ionicons name='close-circle' size={20} color='red' />
 									</TouchableOpacity>
 								</View>
@@ -256,7 +247,7 @@ export default function CreateMatchScreen() {
 					<Text style={styles.sectionTitle}>Nivel de Juego</Text>
 					<View style={styles.levelSelector}>
 						{levels.map((level, index) => (
-							<TouchableOpacity key={level.key} style={[styles.levelOption, skillLevel === level.key && styles.levelOptionActive, index === 0 && styles.levelOptionFirst, index === levels.length - 1 && styles.levelOptionLast]} onPress={() => setSkillLevel(level.key)}>
+							<TouchableOpacity key={level.key} style={[styles.levelOption, skillLevel === level.key && styles.levelOptionActive]} onPress={() => setSkillLevel(level.key)}>
 								<Text style={[styles.levelText, skillLevel === level.key && styles.levelTextActive]}>{level.label}</Text>
 							</TouchableOpacity>
 						))}

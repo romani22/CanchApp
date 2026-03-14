@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { SportType } from '@/types/database.types'
+import { Profile, SportType } from '@/types/database.types'
 
 export type UserStats = {
 	user_id: string
@@ -23,7 +23,8 @@ export const profilesService = {
 	// =============================
 	// UPDATE PROFILE
 	// =============================
-	async updateProfile(userId: string, data: Partial<any>) {
+
+	async updateProfile(userId: string, data: Partial<Profile>) {
 		const { data: updated, error } = await supabase.from('profiles').update(data).eq('id', userId).select().single()
 
 		if (error) throw error

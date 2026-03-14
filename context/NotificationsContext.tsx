@@ -32,9 +32,13 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 			} = await supabase.auth.getUser()
 
 			if (!user) return
+			const fetchCount = async (uid: string) => {
+				const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', uid).eq('is_read', false)
+				setUnreadCount(count ?? 0)
+			}
 
 			setUserId(user.id)
-			await refreshCount()
+			await fetchCount(user.id)
 
 			channel = supabase
 				.channel('notifications-channel')

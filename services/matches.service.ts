@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabase'
 import type { InsertMatch, Match, SportType } from '@/types/database.types'
+import { Database } from '@/types/database.types'
 import { format } from 'date-fns'
 
+type MatchUpdate = Database['public']['Tables']['matches']['Update']
 /**
  * 🎨 Modelo para la UI (lo que renderiza el componente)
  */
@@ -34,9 +36,6 @@ const mapMatchToCard = (match: Match): MatchCard => {
 export const matchesService = {
 	list(filters?: { sport?: string }) {
 		const now = new Date()
-
-		const today = format(now, 'yyyy-MM-dd')
-		const currentTime = format(now, 'HH:mm:ss')
 
 		let query = supabase
 			.from('matches')
@@ -162,7 +161,12 @@ export const matchesService = {
 		const [{ data: created }, { data: joined }] = await Promise.all([createdQuery, joinedQuery])
 
 		// 3️⃣ Unimos resultados
-		const allMatches = [...(created || []), ...(joined || [])]
+		const seen = new Set()
+		const allMatches = [...(created || []), ...(joined || [])].filter((m) => {
+			if (seen.has(m.id)) return false
+			seen.add(m.id)
+			return true
+		})
 
 		// 4️⃣ Filtramos fecha/hora en JS
 
@@ -180,7 +184,7 @@ export const matchesService = {
 		return data
 	},
 
-	update(matchId: string, data: any) {
+	update(matchId: string, data: MatchUpdate) {
 		return supabase.from('matches').update(data).eq('id', matchId)
 	},
 

@@ -34,7 +34,7 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 		setError(null)
 
 		// const { error } = await signIn(email, password)
-		const { error } = await signIn('jose.romani@hotmail.com', '38112034Jose')
+		const { error } = await signIn('jose.romani@hotmail.com', 'Jose2202')
 		if (error) {
 			if (error.message.includes('Invalid login credentials')) {
 				setError('Email o contraseña incorrectos')

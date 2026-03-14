@@ -61,28 +61,28 @@ export default function Countdown({ date }: { date: string }) {
 		<View style={styles.countdownContainer}>
 			{countdown.days > 0 && (
 				<View style={styles.countdownItem}>
-					<View style={styles.countdownBoxDay}>
+					<View style={[styles.countdownBox, { minWidth: 50 }]}>
 						<Text style={styles.countdownNumber}>{formatNumber(countdown.days)}</Text>
 					</View>
 					<Text style={styles.countdownLabel}>DÍAS</Text>
 				</View>
 			)}
 			<View style={styles.countdownItem}>
-				<View style={countdown.hours > 24 ? styles.countdownBoxDay : styles.countdownBox}>
+				<View style={[countdown.hours > 24 ? { minWidth: 95 } : { minWidth: 50 }, styles.countdownBox]}>
 					<Text style={styles.countdownNumber}>{formatNumber(countdown.hours)}</Text>
 				</View>
 				<Text style={styles.countdownLabel}>HORAS</Text>
 			</View>
 
 			<View style={styles.countdownItem}>
-				<View style={countdown.hours > 24 ? styles.countdownBoxDay : styles.countdownBox}>
+				<View style={[countdown.hours > 24 ? { minWidth: 95 } : { minWidth: 50 }, styles.countdownBox]}>
 					<Text style={styles.countdownNumber}>{formatNumber(countdown.minutes)}</Text>
 				</View>
 				<Text style={styles.countdownLabel}>MINS</Text>
 			</View>
 
 			<View style={styles.countdownItem}>
-				<View style={countdown.hours > 24 ? styles.countdownBoxDay : styles.countdownBox}>
+				<View style={[countdown.hours > 24 ? { minWidth: 95 } : { minWidth: 50 }, styles.countdownBox]}>
 					<Text style={styles.countdownNumber}>{formatNumber(countdown.seconds)}</Text>
 				</View>
 				<Text style={styles.countdownLabel}>SEGS</Text>

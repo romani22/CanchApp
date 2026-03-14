@@ -3,21 +3,11 @@ import { NotificationItem } from '@/components/NotificationItem'
 import { useNotifications } from '@/context/NotificationsContext'
 import { supabase } from '@/lib/supabase'
 import { colors } from '@/theme/colors'
+import { Notification } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
-import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { FlatList, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-
-type Notification = {
-	id: string
-	type: string
-	title: string
-	body: string
-	data: any
-	is_read: boolean
-	created_at: string
-}
 
 export default function NotificationsScreen() {
 	const { refreshCount } = useNotifications()
@@ -35,16 +25,13 @@ export default function NotificationsScreen() {
 	}
 
 	const handlePress = async (notification: Notification) => {
-		if (!notification.is_read) {
-			await supabase.from('notifications').update({ is_read: true }).eq('id', notification.id)
+		try {
+			const { data, error } = await supabase.from('notifications').update({ is_read: true }).eq('id', notification.id)
+			if (error) throw error
+			setNotifications(data || [])
+		} catch (err) {
+			console.error('[Notifications] Error:', err)
 		}
-
-		// Navegación según tipo
-		if (notification.data?.match_id) {
-			router.push(`/match/${notification.data.match_id}`)
-		}
-
-		refreshCount()
 	}
 
 	const renderItem = ({ item }: { item: Notification }) => <NotificationItem item={item} onPress={() => handlePress(item)} />

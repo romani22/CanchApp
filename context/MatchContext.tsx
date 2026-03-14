@@ -10,7 +10,6 @@ interface MatchFilters {
 
 interface MatchContextType {
 	matches: MatchWithCreator[]
-	filteredMatches: MatchWithCreator[]
 	isLoading: boolean
 	error: string | null
 	filters: MatchFilters
@@ -62,7 +61,6 @@ export function MatchProvider({ children }: { children: React.ReactNode }) {
 		<MatchContext.Provider
 			value={{
 				matches,
-				filteredMatches: matches,
 				isLoading,
 				error,
 				filters,

@@ -58,7 +58,6 @@ export const styles = StyleSheet.create({
 		...typography.h4,
 		color: colors.textPrimaryDark,
 	},
-	mapButton: {},
 	mapButtonText: {
 		...typography.labelSmall,
 		color: colors.primary,
@@ -133,8 +132,8 @@ export const styles = StyleSheet.create({
 		position: 'absolute',
 		bottom: 80,
 		right: spacing.xl,
-		width: 40,
-		height: 40,
+		width: 56,
+		height: 56,
 		borderRadius: 28,
 		backgroundColor: colors.primary,
 		alignItems: 'center',

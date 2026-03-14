@@ -4,7 +4,7 @@ import { ScrollView, StatusBar } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Header from '../dashboard/Headers'
 import NextMatches from '../dashboard/NextMatch'
-import Recomendations from '../dashboard/Recomendations'
+import Recommendations from '../dashboard/Recommendations'
 
 export default function HomeScreen({ navigation }: { navigation?: any }) {
 	return (
@@ -13,7 +13,7 @@ export default function HomeScreen({ navigation }: { navigation?: any }) {
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<Header />
 				<NextMatches />
-				<Recomendations />
+				<Recommendations />
 			</ScrollView>
 		</SafeAreaView>
 	)

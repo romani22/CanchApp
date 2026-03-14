@@ -1,14 +1,17 @@
 import { styles } from '@/assets/styles/Dashboard.styles'
-import { MatchCard, matchesService } from '@/services/matches.service'
+import { useMatches } from '@/context/MatchContext'
+import { MatchWithCreator } from '@/types/database.types'
 import { getSportImage } from '@/Utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native'
 
-export default function Recomendations() {
-	const [recommendedMatches, setRecommendedMatches] = useState<MatchCard[]>([])
+export default function Recommendations() {
+	const [recommendedMatches, setRecommendedMatches] = useState<MatchWithCreator[]>([])
 	const [loading, setLoading] = useState(true)
+	const { matches } = useMatches()
+	const recommended = matches.slice(0, 5)
 
 	useEffect(() => {
 		loadMatches()
@@ -17,19 +20,18 @@ export default function Recomendations() {
 	const loadMatches = async () => {
 		try {
 			setLoading(true)
-			const matches = await matchesService.getRecommendedMatches()
-			setRecommendedMatches(matches)
+			setRecommendedMatches(recommended)
 		} catch (error) {
 			console.log(error)
 		} finally {
 			setLoading(false)
 		}
 	}
-	const handleMatchPress = (match: MatchCard) => {
+	const handleMatchPress = (match: MatchWithCreator) => {
 		router.push(`/match/${match.id}`)
 	}
 
-	const handleJoinPress = (match: MatchCard) => {
+	const handleJoinPress = (match: MatchWithCreator) => {
 		router.push(`/match/${match.id}`)
 	}
 

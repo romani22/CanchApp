@@ -260,6 +260,8 @@ export type JoinRequest = Database['public']['Tables']['join_requests']['Row']
 export type Notification = Database['public']['Tables']['notifications']['Row']
 export type MatchRating = Database['public']['Tables']['match_ratings']['Row']
 export type InsertMatch = Database['public']['Tables']['matches']['Insert']
+export type MatchUpdate = Database['public']['Tables']['matches']['Update']
+export type Guest = { id: string; name: string }
 // Extended types with relations
 export type MatchWithCreator = Match & {
 	creator: Profile

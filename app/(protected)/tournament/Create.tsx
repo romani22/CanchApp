@@ -1,4 +1,4 @@
-import { styles } from '@/assets/styles/Tournament.style'
+import { styles } from '@/assets/styles/Tournament.styles'
 import { colors } from '@/theme/colors'
 import { spacing } from '@/theme/spacing'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'

@@ -83,17 +83,6 @@ export const authService = {
 	   PROFILE
 	============================ */
 
-	async getProfile(userId: string): Promise<Profile | null> {
-		const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-
-		if (error) {
-			console.error('Error fetching profile:', error)
-			return null
-		}
-
-		return data
-	},
-
 	async updateProfile(userId: string, updates: Partial<Profile>): Promise<{ error: Error | null }> {
 		const { error } = await supabase
 			.from('profiles')
@@ -102,6 +91,17 @@ export const authService = {
 				updated_at: new Date().toISOString(),
 			})
 			.eq('id', userId)
+
+		return { error: error ?? null }
+	},
+	/* ============================
+	UPDATE PASSWORD
+	============================ */
+
+	async updatePassword(newPassword: string): Promise<{ error: Error | null }> {
+		const { error } = await supabase.auth.updateUser({
+			password: newPassword,
+		})
 
 		return { error: error ?? null }
 	},

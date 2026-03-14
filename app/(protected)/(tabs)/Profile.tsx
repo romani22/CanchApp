@@ -2,12 +2,13 @@ import { styles } from '@/assets/styles/Profile.styles'
 import { Chip } from '@/components/ui/Chip'
 import ConfirmChangesModal from '@/components/ui/ConfirmChangesModal'
 import { useAuth } from '@/context/AuthContext'
+import { authService } from '@/services/auth.service'
 import { profilesService, UserStats } from '@/services/profiles.service'
 import { colors } from '@/theme/colors'
 import { SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { useEffect, useState } from 'react'
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import HeadViewProfile from '../profile/HeadViewProfile'
 import HeaderProfile from '../profile/HeaderProfile'
@@ -41,6 +42,14 @@ export default function ProfileScreen() {
 
 	const [confirmVisible, setConfirmVisible] = useState(false)
 	const [saving, setSaving] = useState(false)
+
+	const [passwordModalVisible, setPasswordModalVisible] = useState(false)
+
+	const [currentPassword, setCurrentPassword] = useState('')
+	const [newPassword, setNewPassword] = useState('')
+	const [confirmPassword, setConfirmPassword] = useState('')
+
+	const [changingPassword, setChangingPassword] = useState(false)
 
 	useEffect(() => {
 		if (profile) {
@@ -125,6 +134,40 @@ export default function ProfileScreen() {
 		if (value.trim() === '') return // No permitir solo espacios
 		setEditableName(value)
 	}
+
+	const handleChangePassword = async () => {
+		if (newPassword !== confirmPassword) {
+			Alert.alert('Error', 'Las contraseñas no coinciden')
+			return
+		}
+
+		const validation = authService.validatePassword(newPassword)
+
+		if (!validation.isValid) {
+			Alert.alert('Contraseña inválida', validation.errors.join('\n'))
+			return
+		}
+
+		try {
+			setChangingPassword(true)
+
+			const { error } = await authService.updatePassword(newPassword)
+
+			if (error) throw error
+
+			Alert.alert('Éxito', 'Contraseña actualizada correctamente')
+
+			setPasswordModalVisible(false)
+			setCurrentPassword('')
+			setNewPassword('')
+			setConfirmPassword('')
+		} catch (error) {
+			Alert.alert('Error', 'No se pudo cambiar la contraseña')
+			console.log(error)
+		} finally {
+			setChangingPassword(false)
+		}
+	}
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
 			<HeadViewProfile isEditing={isEditing} onToggleEdit={handleToggleEdit} />
@@ -152,6 +195,12 @@ export default function ProfileScreen() {
 					</View>
 				</View>
 
+				<View style={styles.section}>
+					<TouchableOpacity style={styles.logoutButton} onPress={() => setPasswordModalVisible(true)}>
+						<Ionicons name='key-outline' size={22} color={colors.primary} />
+						<Text style={styles.logoutButtonText}>Cambiar contraseña</Text>
+					</TouchableOpacity>
+				</View>
 				{/* <ZonaProfile zone={editableZone} isEditing={isEditing} onChangeZone={setEditableZone} /> */}
 
 				{/* Logout */}
@@ -164,7 +213,27 @@ export default function ProfileScreen() {
 			</ScrollView>
 			{/* MODAL DEPORTES */}
 			<SportModal visible={sportsModalVisible} onClose={() => setSportsModalVisible(false)} onSelectSport={handleSelectSport} editableSports={editableSports} sportOptions={sportOptions} />
+			{passwordModalVisible && (
+				<Modal visible={passwordModalVisible} animationType='fade' transparent>
+					<View style={styles.modalOverlay}>
+						<View style={styles.passwordModal}>
+							<Text style={styles.modalTitle}>Cambiar contraseña</Text>
 
+							<TextInput placeholder='Nueva contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+
+							<TextInput placeholder='Confirmar contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+
+							<TouchableOpacity style={styles.modalButton} onPress={handleChangePassword}>
+								<Text style={styles.modalButtonText}>Guardar</Text>
+							</TouchableOpacity>
+
+							<TouchableOpacity style={styles.modalCancel} onPress={() => setPasswordModalVisible(false)}>
+								<Text style={styles.modalCancelText}>Cancelar</Text>
+							</TouchableOpacity>
+						</View>
+					</View>
+				</Modal>
+			)}
 			{/* MODAL CONFIRMAR CAMBIOS */}
 			<ConfirmChangesModal visible={confirmVisible} title='¿Guardar cambios?' description='Se actualizarán tus deportes favoritos y tu zona.' onConfirm={handleConfirmSave} onDiscard={handleDiscardChanges} onCancel={() => setConfirmVisible(false)} loading={saving} />
 		</SafeAreaView>

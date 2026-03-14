@@ -1,5 +1,5 @@
-import ParticipantsMatch from '@/app/(protected)/match/ParticipantsMatch'
 import { styles } from '@/assets/styles/MatchCard.styles'
+import ParticipantsMatch from '@/components/match/ParticipantsMatch'
 import { useAuth } from '@/context/AuthContext'
 import { colors } from '@/theme/colors'
 import { MatchWithCreator, SkillLevel } from '@/types/database.types'

@@ -1,28 +1,25 @@
 import { styles } from '@/assets/styles/Dashboard.styles'
 import Countdown from '@/components/ui/Countdown'
-import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 import { matchesService } from '@/services/matches.service'
 import type { Match } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
+import { format, parseISO } from 'date-fns'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 export default function NextMatches() {
 	const [nextMatch, setNextMatch] = useState<Match | null>(null)
-
+	const [newDate, setnewDate] = useState<Date | null>(null)
+	const { user } = useAuth()
 	useEffect(() => {
 		const loadNextMatch = async () => {
-			const {
-				data: { user },
-			} = await supabase.auth.getUser()
-
 			if (!user) return
 
 			const { data, error } = await matchesService.getNextMatchForUser(user.id)
-			console.log(error)
 			if (error) {
-				console.error(error)
+				console.error('[NextMatch] Error cargando partido:', error)
 				return
 			}
 			setNextMatch(data ?? null)
@@ -30,6 +27,15 @@ export default function NextMatches() {
 
 		loadNextMatch()
 	}, [])
+
+	useEffect(() => {
+		if (nextMatch) {
+			const matchDate = parseISO(nextMatch.starts_at)
+			if (matchDate) {
+				setnewDate(matchDate)
+			}
+		}
+	}, [nextMatch])
 
 	const handlePress = () => {
 		router.push('/Explore')
@@ -46,7 +52,7 @@ export default function NextMatches() {
 				<>
 					<View style={styles.nextMatchHeader}>
 						<View style={styles.todayBadge}>
-							<Text style={styles.todayBadgeText}>{nextMatch.starts_at.split('T')[0]}</Text>
+							<Text style={styles.todayBadgeText}>{format(newDate ?? new Date(), 'dd/MM/yyyy')}</Text>
 						</View>
 
 						<View style={styles.locationContainer}>
@@ -58,7 +64,7 @@ export default function NextMatches() {
 					<Text style={styles.nextMatchTitle}>Tu próximo partido</Text>
 
 					<Text style={styles.nextMatchSubtitle}>
-						{nextMatch.sport} • {nextMatch.starts_at.split('T')[1].substring(0, 5)} hs
+						{nextMatch.sport} • {format(newDate ?? new Date(), 'dd/MM - HH:mm')} hs
 					</Text>
 
 					<Countdown date={`${nextMatch.starts_at}`} />

@@ -13,6 +13,7 @@ export const colors = {
 	// Surface (cards, etc)
 	surfaceLight: '#ffffff',
 	surfaceDark: '#1c2620',
+	surfaceElevated: '#0A261D', // Verde muy oscuro para elementos elevados
 	// Text
 	textPrimaryLight: '#0f172a', // slate-900
 	textPrimaryDark: '#ffffff',
@@ -48,13 +49,6 @@ export const colors = {
 		avanzado: '#f59e0b',
 	},
 } as const
-
-export const borderRadius = {
-	sm: 6,
-	md: 8,
-	lg: 10,
-	xl: 14,
-}
 
 export type ColorScheme = 'light' | 'dark'
 

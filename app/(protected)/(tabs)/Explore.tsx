@@ -6,12 +6,12 @@ import { colors } from '@/theme/colors'
 import { MatchWithCreator } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 export default function ExploreScreen() {
-	const { filteredMatches, isLoading, error, filters, setFilters, refreshMatches } = useMatches()
+	const { matches, isLoading, error, filters, setFilters, refreshMatches } = useMatches()
 
 	const handleMatchPress = (match: MatchWithCreator) => {
 		router.push(`/match/${match.id}`)
@@ -29,7 +29,7 @@ export default function ExploreScreen() {
 			{/* Section Header */}
 			<View style={styles.sectionHeader}>
 				<Text style={styles.sectionTitle}>Partidos Disponibles</Text>
-				<TouchableOpacity style={styles.mapButton}>
+				<TouchableOpacity>
 					<Text style={styles.mapButtonText}>Ver Mapa</Text>
 				</TouchableOpacity>
 			</View>
@@ -49,7 +49,7 @@ export default function ExploreScreen() {
 	)
 
 	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCardComponent match={item} onPress={() => handleMatchPress(item)} onJoin={() => handleJoinPress(item)} />, [])
-
+	const filteredMatches = useMemo(() => (filters.sport ? matches.filter((m) => m.sport === filters.sport) : matches), [matches, filters])
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
 			{/* Header */}

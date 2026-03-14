@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { Guest } from '@/types/database.types'
 
 export const matchParticipantsService = {
 	async join(matchId: string, userId: string) {
@@ -8,7 +9,7 @@ export const matchParticipantsService = {
 		})
 	},
 
-	async addGuest(matchId: string, guestName: string) {
+	async addGuest(matchId: string, guestName: Guest['name']) {
 		return await supabase.from('match_participants').insert({
 			match_id: matchId,
 			guest_name: guestName,
@@ -19,7 +20,7 @@ export const matchParticipantsService = {
 		return await supabase.from('match_participants').delete().eq('match_id', matchId).eq('user_id', userId)
 	},
 
-	async removeGuest(matchId: string, guestName: string) {
+	async removeGuest(matchId: string, guestName: Guest['name']) {
 		return await supabase.from('match_participants').delete().eq('match_id', matchId).eq('guest_name', guestName)
 	},
 

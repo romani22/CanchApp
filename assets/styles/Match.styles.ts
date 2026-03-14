@@ -153,14 +153,6 @@ export const styles = StyleSheet.create({
 		justifyContent: 'center',
 		borderRadius: borderRadius.full,
 	},
-	levelOptionFirst: {
-		borderTopLeftRadius: borderRadius.full,
-		borderBottomLeftRadius: borderRadius.full,
-	},
-	levelOptionLast: {
-		borderTopRightRadius: borderRadius.full,
-		borderBottomRightRadius: borderRadius.full,
-	},
 	levelOptionActive: {
 		backgroundColor: colors.primary,
 		shadowColor: colors.primary,
@@ -295,7 +287,7 @@ export const styles = StyleSheet.create({
 	},
 	statsRow: {
 		flexDirection: 'row',
-		backgroundColor: '#0A261D', // Verde muy oscuro
+		backgroundColor: colors.surfaceElevated, // Verde muy oscuro
 		borderRadius: 12,
 		marginTop: 20,
 		paddingVertical: 15,
@@ -350,7 +342,7 @@ export const styles = StyleSheet.create({
 		paddingTop: 10,
 	},
 	mainButton: {
-		backgroundColor: '#00FF66', // El verde neón de tu imagen
+		backgroundColor: colors.primary, // El verde neón de tu imagen
 		paddingVertical: 18,
 		borderRadius: 15,
 		alignItems: 'center',
@@ -373,7 +365,7 @@ export const styles = StyleSheet.create({
 	guestAvatarCard: {
 		width: 30,
 		height: 30,
-		borderRadius: 20,
+		borderRadius: 15,
 		justifyContent: 'center',
 		alignItems: 'center',
 		marginRight: -10,
@@ -384,5 +376,18 @@ export const styles = StyleSheet.create({
 		color: 'white',
 		fontWeight: 'bold',
 		fontSize: 16,
+	},
+	guestInputRow: {
+		flexDirection: 'row',
+		gap: spacing.sm,
+	},
+	guestListContainer: {
+		marginTop: spacing.sm,
+	},
+	guestRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginBottom: 6,
 	},
 })
