@@ -4,8 +4,9 @@ import { Database } from '@/types/database.types'
 import { format } from 'date-fns'
 
 type MatchUpdate = Database['public']['Tables']['matches']['Update']
+
 /**
- * 🎨 Modelo para la UI (lo que renderiza el componente)
+ * Modelo para la UI (lo que renderiza el componente)
  */
 export interface MatchCard {
 	id: string
@@ -35,49 +36,16 @@ const mapMatchToCard = (match: Match): MatchCard => {
 
 export const matchesService = {
 	list(filters?: { sport?: string }) {
-		const now = new Date()
+		// FIX: usar .toISOString() para que Supabase reciba UTC puro ("2025-03-15T12:00:00.000Z")
+		// en vez de un objeto Date que React Native serializa con zona local ("GMT-0300")
+		const now = new Date().toISOString()
 
 		let query = supabase
 			.from('matches')
 			.select(
 				`
-					*,
-					creator:profiles!matches_creator_id_fkey(*),
-					participants:match_participants(
-						id,
-						user_id,
-						guest_name,
-						joined_at,
-						user:profiles(
-								id,
-								full_name,
-								avatar_url,
-								rating,
-								elo_rating
-							)
-					)
-				`,
-			)
-			.eq('status', 'open')
-			.gte('starts_at', now)
-
-		if (filters?.sport) query = query.eq('sport', filters.sport)
-
-		return query.order('starts_at', { ascending: true })
-	},
-	async getById(matchId: string) {
-		return supabase
-			.from('matches')
-			.select(
-				`
 				*,
-				creator:profiles!matches_creator_id_fkey(
-					id,
-					full_name,
-					avatar_url,
-					rating,
-					elo_rating
-				),
+				creator:profiles!matches_creator_id_fkey(*),
 				participants:match_participants(
 					id,
 					user_id,
@@ -91,41 +59,79 @@ export const matchesService = {
 						elo_rating
 					)
 				)
-				`,
+			`,
+			)
+			.eq('status', 'open')
+			.gte('starts_at', now)
+
+		if (filters?.sport) query = query.eq('sport', filters.sport)
+
+		return query.order('starts_at', { ascending: true })
+	},
+
+	async getById(matchId: string) {
+		return supabase
+			.from('matches')
+			.select(
+				`
+			*,
+			creator:profiles!matches_creator_id_fkey(
+				id,
+				full_name,
+				avatar_url,
+				rating,
+				elo_rating
+			),
+			participants:match_participants(
+				id,
+				user_id,
+				guest_name,
+				joined_at,
+				user:profiles(
+					id,
+					full_name,
+					avatar_url,
+					rating,
+					elo_rating
+				)
+			)
+			`,
 			)
 			.eq('id', matchId)
 			.single()
 	},
+
 	getCreatedByUser(userId: string) {
 		return supabase
 			.from('matches')
 			.select(
 				`
+				*,
+				creator:profiles!matches_creator_id_fkey(*),
+				winner:profiles!matches_winner_id_fkey(*),
+				participants:match_participants(
 					*,
-					creator:profiles!matches_creator_id_fkey(*),
-					winner:profiles!matches_winner_id_fkey(*),
-					participants:match_participants(
-						*,
-						user:profiles(*)
-					)
-					`,
+					user:profiles(*)
+				)
+				`,
 			)
 			.eq('creator_id', userId)
 			.order('starts_at', { ascending: true })
 	},
+
 	getJoined(userId: string) {
 		return supabase
 			.from('matches')
 			.select(
 				`
+				*,
+				creator:profiles!matches_creator_id_fkey(*),
+				winner:profiles!matches_winner_id_fkey(*),
+				participants:match_participants!inner(
 					*,
-					creator:profiles!matches_creator_id_fkey(*),
-					winner:profiles!matches_winner_id_fkey(*),
-					participants:match_participants!inner(
-						*,
-						user:profiles(*)
-					)
-				`,
+					user:profiles(*)
+				)
+			`,
 			)
 			.eq('participants.user_id', userId)
 			.order('starts_at', { ascending: true })
@@ -134,6 +140,7 @@ export const matchesService = {
 	async getRecommendedMatches(limit: number = 5): Promise<MatchCard[]> {
 		const now = new Date().toISOString()
 		const { data, error } = await supabase.from('matches').select('*').eq('status', 'open').gte('starts_at', now).order('starts_at', { ascending: true }).limit(limit)
+
 		if (error) {
 			console.error(error)
 			throw error
@@ -141,41 +148,42 @@ export const matchesService = {
 
 		return (data || []).map(mapMatchToCard)
 	},
-	async getNextMatchForUser(userId: string) {
-		const now = new Date()
 
-		// 1️⃣ Partidos creados por el usuario
+	async getNextMatchForUser(userId: string) {
+		// FIX: usar .toISOString() también para el filtro JS posterior
+		const now = new Date().toISOString()
+
 		const createdQuery = supabase.from('matches').select('*').eq('creator_id', userId)
 
-		// 2️⃣ Partidos donde es participante
 		const joinedQuery = supabase
 			.from('matches')
 			.select(
 				`
-					*,
-					match_participants!inner(user_id)
-				`,
+				*,
+				match_participants!inner(user_id)
+			`,
 			)
 			.eq('match_participants.user_id', userId)
 
 		const [{ data: created }, { data: joined }] = await Promise.all([createdQuery, joinedQuery])
 
-		// 3️⃣ Unimos resultados
-		const seen = new Set()
+		// Deduplicar por id (el usuario puede ser creador Y participante del mismo partido)
+		const seen = new Set<string>()
 		const allMatches = [...(created || []), ...(joined || [])].filter((m) => {
 			if (seen.has(m.id)) return false
 			seen.add(m.id)
 			return true
 		})
 
-		// 4️⃣ Filtramos fecha/hora en JS
+		// Filtrar futuros y ordenar por más próximo
+		const upcoming = allMatches.filter((match) => match.starts_at >= now).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
 
-		const upcoming = allMatches.filter((match) => new Date(match.starts_at) >= now).sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
 		return {
 			data: upcoming[0] ?? null,
 			error: null,
 		}
 	},
+
 	async create(match: InsertMatch): Promise<Match> {
 		const { data, error } = await supabase.from('matches').insert(match).select().single()
 

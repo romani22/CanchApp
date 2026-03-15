@@ -68,21 +68,21 @@ export default function Countdown({ date }: { date: string }) {
 				</View>
 			)}
 			<View style={styles.countdownItem}>
-				<View style={[countdown.hours > 24 ? { minWidth: 95 } : { minWidth: 50 }, styles.countdownBox]}>
+				<View style={[countdown.days > 0 ? { minWidth: 50 } : { minWidth: 95 }, styles.countdownBox]}>
 					<Text style={styles.countdownNumber}>{formatNumber(countdown.hours)}</Text>
 				</View>
 				<Text style={styles.countdownLabel}>HORAS</Text>
 			</View>
 
 			<View style={styles.countdownItem}>
-				<View style={[countdown.hours > 24 ? { minWidth: 95 } : { minWidth: 50 }, styles.countdownBox]}>
+				<View style={[countdown.days > 0 ? { minWidth: 50 } : { minWidth: 95 }, styles.countdownBox]}>
 					<Text style={styles.countdownNumber}>{formatNumber(countdown.minutes)}</Text>
 				</View>
 				<Text style={styles.countdownLabel}>MINS</Text>
 			</View>
 
 			<View style={styles.countdownItem}>
-				<View style={[countdown.hours > 24 ? { minWidth: 95 } : { minWidth: 50 }, styles.countdownBox]}>
+				<View style={[countdown.days > 0 ? { minWidth: 50 } : { minWidth: 95 }, styles.countdownBox]}>
 					<Text style={styles.countdownNumber}>{formatNumber(countdown.seconds)}</Text>
 				</View>
 				<Text style={styles.countdownLabel}>SEGS</Text>

@@ -12,7 +12,11 @@
 		"ios": {
 			"icon": "./assets/images/Logo/appstore.png",
 			"bundleIdentifier": "com.romani22.canchapp",
-			"supportsTablet": true
+			"supportsTablet": true,
+			"infoPlist": {
+				"NSLocationWhenInUseUsageDescription": "CanchApp usa tu ubicación para mostrarte canchas y partidos cercanos a vos.",
+				"NSLocationAlwaysAndWhenInUseUsageDescription": "CanchApp usa tu ubicación para mostrarte canchas y partidos cercanos a vos."
+			}
 		},
 		"android": {
 			"package": "com.romani22.canchapp",
@@ -21,7 +25,11 @@
 				"backgroundColor": "#ffffff"
 			},
 			"edgeToEdgeEnabled": true,
-			"predictiveBackGestureEnabled": false
+			"predictiveBackGestureEnabled": false,
+			"permissions": [
+				"android.permission.ACCESS_COARSE_LOCATION",
+				"android.permission.ACCESS_FINE_LOCATION"
+			]
 		},
 		"web": {
 			"output": "static",
@@ -43,7 +51,13 @@
 			],
 			"@react-native-community/datetimepicker",
 			"expo-secure-store",
-			"expo-web-browser"
+			"expo-web-browser",
+			[
+				"expo-location",
+				{
+					"locationWhenInUsePermission": "CanchApp usa tu ubicación para mostrarte canchas y partidos cercanos a vos."
+				}
+			]
 		],
 		"experiments": {
 			"typedRoutes": true,

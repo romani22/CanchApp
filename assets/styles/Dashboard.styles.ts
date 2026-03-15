@@ -106,7 +106,7 @@ export const styles = StyleSheet.create({
 	},
 	countdownContainer: {
 		flexDirection: 'row',
-		justifyContent: 'flex-start',
+		justifyContent: 'center',
 		gap: 12,
 		marginBottom: 20,
 	},

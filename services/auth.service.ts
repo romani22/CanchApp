@@ -1,5 +1,4 @@
 import { supabase } from '@/lib/supabase'
-import { Profile } from '@/types/database.types'
 import { AuthChangeEvent, Session } from '@supabase/supabase-js'
 
 export const authService = {
@@ -79,21 +78,6 @@ export const authService = {
 		return { error: error ?? null }
 	},
 
-	/* ============================
-	   PROFILE
-	============================ */
-
-	async updateProfile(userId: string, updates: Partial<Profile>): Promise<{ error: Error | null }> {
-		const { error } = await supabase
-			.from('profiles')
-			.update({
-				...updates,
-				updated_at: new Date().toISOString(),
-			})
-			.eq('id', userId)
-
-		return { error: error ?? null }
-	},
 	/* ============================
 	UPDATE PASSWORD
 	============================ */

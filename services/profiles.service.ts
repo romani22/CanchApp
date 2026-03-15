@@ -9,6 +9,24 @@ export type UserStats = {
 	rating: number
 	rating_count: number
 }
+
+/**
+ * PostgreSQL POINT espera el formato string "(x,y)".
+ * El cliente JS envía objetos { x, y } que Supabase no puede convertir solo.
+ * Esta función serializa las coordenadas antes de cualquier insert/update.
+ */
+function serializeCoords(data: Partial<Profile>): Record<string, unknown> {
+	const result: Record<string, unknown> = { ...data }
+
+	if ('zone_coordinates' in result && result.zone_coordinates != null) {
+		const coords = result.zone_coordinates as { x: number; y: number }
+		// Formato que acepta PostgreSQL POINT: "(longitud,latitud)"
+		result.zone_coordinates = `(${coords.x},${coords.y})` as any
+	}
+
+	return result
+}
+
 export const profilesService = {
 	// =============================
 	// GET PROFILE
@@ -23,9 +41,10 @@ export const profilesService = {
 	// =============================
 	// UPDATE PROFILE
 	// =============================
-
 	async updateProfile(userId: string, data: Partial<Profile>) {
-		const { data: updated, error } = await supabase.from('profiles').update(data).eq('id', userId).select().single()
+		const payload = serializeCoords(data)
+
+		const { data: updated, error } = await supabase.from('profiles').update(payload).eq('id', userId).select().single()
 
 		if (error) throw error
 		return updated
@@ -49,10 +68,8 @@ export const profilesService = {
 			return currentSports
 		}
 
-		const updatedSports = [...currentSports, newSport]
-
 		return await this.updateProfile(userId, {
-			favorite_sports: updatedSports,
+			favorite_sports: [...currentSports, newSport],
 		})
 	},
 
@@ -60,10 +77,8 @@ export const profilesService = {
 	// REMOVE FAVORITE SPORT
 	// =============================
 	async removeFavoriteSport(userId: string, currentSports: SportType[], sportToRemove: SportType) {
-		const updatedSports = currentSports.filter((s) => s !== sportToRemove)
-
 		return await this.updateProfile(userId, {
-			favorite_sports: updatedSports,
+			favorite_sports: currentSports.filter((s) => s !== sportToRemove),
 		})
 	},
 

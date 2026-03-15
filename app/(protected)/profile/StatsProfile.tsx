@@ -4,13 +4,12 @@ import { Text, View } from 'react-native'
 type Props = {
 	totalMatches: number
 	totalWins: number
-	eloRating: number
 	rating: number
-	ratingCount: number
-	winRate: number
 }
 
 function StatsProfile({ totalMatches, totalWins, rating }: Props) {
+	const winRate = totalMatches > 0 ? Math.round((totalWins / totalMatches) * 100) : 0
+
 	return (
 		<View style={styles.statsGrid}>
 			<View style={styles.statCard}>
@@ -24,7 +23,12 @@ function StatsProfile({ totalMatches, totalWins, rating }: Props) {
 			</View>
 
 			<View style={styles.statCard}>
-				<Text style={styles.statValue}>{rating}</Text>
+				<Text style={styles.statValue}>{winRate}%</Text>
+				<Text style={styles.statLabel}>% Victorias</Text>
+			</View>
+
+			<View style={styles.statCard}>
+				<Text style={styles.statValue}>{rating.toFixed(1)}</Text>
 				<Text style={styles.statLabel}>Rating</Text>
 			</View>
 		</View>

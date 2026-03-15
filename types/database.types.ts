@@ -206,6 +206,7 @@ export interface Database {
 				Update: {
 					user_id?: string
 					type?: NotificationType
+					match_id?: string
 					title?: string
 					body?: string
 					data?: Json

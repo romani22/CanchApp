@@ -8,12 +8,13 @@ import { colors } from '@/theme/colors'
 import { SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { useEffect, useState } from 'react'
-import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import HeadViewProfile from '../profile/HeadViewProfile'
 import HeaderProfile from '../profile/HeaderProfile'
 import SportModal from '../profile/SportModal'
 import StatsProfile from '../profile/StatsProfile'
+import ZonaProfile from '../profile/ZonaProfile'
 
 const sportOptions: {
 	key: SportType
@@ -34,21 +35,17 @@ export default function ProfileScreen() {
 	const [isEditing, setIsEditing] = useState(false)
 
 	const [editableName, setEditableName] = useState('')
-
 	const [editableSports, setEditableSports] = useState<SportType[]>([])
 	const [editableZone, setEditableZone] = useState<string | null>(null)
+	const [editableZoneCoords, setEditableZoneCoords] = useState<{ x: number; y: number } | null>(null)
 
 	const [sportsModalVisible, setSportsModalVisible] = useState(false)
-
 	const [confirmVisible, setConfirmVisible] = useState(false)
 	const [saving, setSaving] = useState(false)
 
 	const [passwordModalVisible, setPasswordModalVisible] = useState(false)
-
-	const [currentPassword, setCurrentPassword] = useState('')
 	const [newPassword, setNewPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
-
 	const [changingPassword, setChangingPassword] = useState(false)
 
 	useEffect(() => {
@@ -56,6 +53,7 @@ export default function ProfileScreen() {
 			setEditableName(profile.full_name || '')
 			setEditableSports(profile.favorite_sports || [])
 			setEditableZone(profile.zone || null)
+			setEditableZoneCoords(profile.zone_coordinates || null)
 		}
 	}, [profile])
 
@@ -72,16 +70,23 @@ export default function ProfileScreen() {
 		fetchStats()
 	}, [profile?.id])
 
-	const handleToggleEdit = async () => {
+	// FIX: no cerrar el form hasta que el usuario confirme o descarte
+	const handleToggleEdit = () => {
 		if (isEditing) {
-			if (!profile?.id) return
-			setConfirmVisible(true)
+			setConfirmVisible(true) // Solo abrir modal, no cambiar isEditing todavía
+		} else {
+			setIsEditing(true)
 		}
-		setIsEditing(!isEditing)
 	}
 
 	const handleConfirmSave = async () => {
 		if (!profile?.id) return
+
+		// Validar nombre antes de guardar
+		if (!editableName.trim()) {
+			Alert.alert('Error', 'El nombre no puede estar vacío')
+			return
+		}
 
 		try {
 			setSaving(true)
@@ -89,13 +94,14 @@ export default function ProfileScreen() {
 				full_name: editableName,
 				favorite_sports: editableSports,
 				zone: editableZone,
+				zone_coordinates: editableZoneCoords,
 			})
 
 			await updateProfile(updated)
 			setIsEditing(false)
 		} catch (error) {
 			Alert.alert('Error', 'No se pudieron guardar los cambios')
-			console.log(error)
+			console.error('[Profile] Error guardando:', error)
 		} finally {
 			setSaving(false)
 			setConfirmVisible(false)
@@ -107,7 +113,7 @@ export default function ProfileScreen() {
 		setEditableName(profile?.full_name || '')
 		setEditableSports(profile?.favorite_sports || [])
 		setEditableZone(profile?.zone || null)
-
+		setEditableZoneCoords(profile?.zone_coordinates || null)
 		setIsEditing(false)
 		setConfirmVisible(false)
 	}
@@ -121,17 +127,16 @@ export default function ProfileScreen() {
 	}
 
 	const handleSignOut = () => {
-		Alert.alert('Cerrar Sesion', 'Estas seguro?', [
+		Alert.alert('Cerrar Sesión', '¿Estás seguro?', [
 			{ text: 'Cancelar', style: 'cancel' },
-			{ text: 'Cerrar Sesion', style: 'destructive', onPress: signOut },
+			{ text: 'Cerrar Sesión', style: 'destructive', onPress: signOut },
 		])
 	}
 
+	// FIX: permitir borrar el campo, validar solo al guardar
 	const handleChangeName = (value: string) => {
-		if (value.length > 50) return // Limitar longitud del nombre
-		if (!/^[a-zA-Z\sáéíóúüñ]*$/.test(value)) return // Permitir solo letras y espacios y tildes
-
-		if (value.trim() === '') return // No permitir solo espacios
+		if (value.length > 50) return
+		if (!/^[a-zA-Z\sáéíóúüñÁÉÍÓÚÜÑ]*$/.test(value)) return
 		setEditableName(value)
 	}
 
@@ -142,7 +147,6 @@ export default function ProfileScreen() {
 		}
 
 		const validation = authService.validatePassword(newPassword)
-
 		if (!validation.isValid) {
 			Alert.alert('Contraseña inválida', validation.errors.join('\n'))
 			return
@@ -150,31 +154,38 @@ export default function ProfileScreen() {
 
 		try {
 			setChangingPassword(true)
-
 			const { error } = await authService.updatePassword(newPassword)
-
 			if (error) throw error
 
 			Alert.alert('Éxito', 'Contraseña actualizada correctamente')
-
 			setPasswordModalVisible(false)
-			setCurrentPassword('')
 			setNewPassword('')
 			setConfirmPassword('')
 		} catch (error) {
 			Alert.alert('Error', 'No se pudo cambiar la contraseña')
-			console.log(error)
+			console.error('[Profile] Error cambiando contraseña:', error)
 		} finally {
 			setChangingPassword(false)
 		}
 	}
+
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
 			<HeadViewProfile isEditing={isEditing} onToggleEdit={handleToggleEdit} />
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<HeaderProfile isEditing={isEditing} name={editableName} onChangeName={handleChangeName} />
 
-				{loadingStats ? <Text>Cargando estadísticas...</Text> : stats && <StatsProfile totalMatches={stats.total_matches} totalWins={stats.total_wins} eloRating={stats.elo_rating} rating={stats.rating} ratingCount={stats.rating_count} winRate={stats.total_matches > 0 ? (stats.total_wins / stats.total_matches) * 100 : 0} />}
+				{loadingStats ? (
+					<ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />
+				) : (
+					stats && (
+						<StatsProfile
+							totalMatches={stats.total_matches}
+							totalWins={stats.total_wins}
+							rating={stats.rating}
+						/>
+					)
+				)}
 
 				{/* Deportes */}
 				<View style={styles.section}>
@@ -195,36 +206,77 @@ export default function ProfileScreen() {
 					</View>
 				</View>
 
+				{/* Zona de juego */}
+				<ZonaProfile
+					zone={editableZone}
+					zoneCoordinates={editableZoneCoords}
+					isEditing={isEditing}
+					onChangeZone={(zone, coords) => {
+						setEditableZone(zone)
+						setEditableZoneCoords(coords)
+					}}
+				/>
+
 				<View style={styles.section}>
-					<TouchableOpacity style={styles.logoutButton} onPress={() => setPasswordModalVisible(true)}>
+					<TouchableOpacity style={styles.actionButton} onPress={() => setPasswordModalVisible(true)}>
 						<Ionicons name='key-outline' size={22} color={colors.primary} />
-						<Text style={styles.logoutButtonText}>Cambiar contraseña</Text>
+						<Text style={styles.actionButtonText}>Cambiar contraseña</Text>
 					</TouchableOpacity>
 				</View>
-				{/* <ZonaProfile zone={editableZone} isEditing={isEditing} onChangeZone={setEditableZone} /> */}
 
 				{/* Logout */}
 				<View style={styles.section}>
 					<TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
 						<Ionicons name='log-out-outline' size={22} color={colors.error} />
-						<Text style={styles.logoutButtonText}>Cerrar Sesion</Text>
+						<Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
 					</TouchableOpacity>
 				</View>
 			</ScrollView>
-			{/* MODAL DEPORTES */}
-			<SportModal visible={sportsModalVisible} onClose={() => setSportsModalVisible(false)} onSelectSport={handleSelectSport} editableSports={editableSports} sportOptions={sportOptions} />
+
+			{/* Modal deportes */}
+			<SportModal
+				visible={sportsModalVisible}
+				onClose={() => setSportsModalVisible(false)}
+				onSelectSport={handleSelectSport}
+				editableSports={editableSports}
+				sportOptions={sportOptions}
+			/>
+
+			{/* Modal cambiar contraseña */}
 			{passwordModalVisible && (
 				<Modal visible={passwordModalVisible} animationType='fade' transparent>
 					<View style={styles.modalOverlay}>
 						<View style={styles.passwordModal}>
 							<Text style={styles.modalTitle}>Cambiar contraseña</Text>
 
-							<TextInput placeholder='Nueva contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+							<TextInput
+								placeholder='Nueva contraseña'
+								placeholderTextColor='#999'
+								style={styles.modalInput}
+								secureTextEntry
+								value={newPassword}
+								onChangeText={setNewPassword}
+							/>
 
-							<TextInput placeholder='Confirmar contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+							<TextInput
+								placeholder='Confirmar contraseña'
+								placeholderTextColor='#999'
+								style={styles.modalInput}
+								secureTextEntry
+								value={confirmPassword}
+								onChangeText={setConfirmPassword}
+							/>
 
-							<TouchableOpacity style={styles.modalButton} onPress={handleChangePassword}>
-								<Text style={styles.modalButtonText}>Guardar</Text>
+							<TouchableOpacity
+								style={[styles.modalButton, changingPassword && { opacity: 0.6 }]}
+								onPress={handleChangePassword}
+								disabled={changingPassword}
+							>
+								{changingPassword ? (
+									<ActivityIndicator color='white' />
+								) : (
+									<Text style={styles.modalButtonText}>Guardar</Text>
+								)}
 							</TouchableOpacity>
 
 							<TouchableOpacity style={styles.modalCancel} onPress={() => setPasswordModalVisible(false)}>
@@ -234,8 +286,17 @@ export default function ProfileScreen() {
 					</View>
 				</Modal>
 			)}
-			{/* MODAL CONFIRMAR CAMBIOS */}
-			<ConfirmChangesModal visible={confirmVisible} title='¿Guardar cambios?' description='Se actualizarán tus deportes favoritos y tu zona.' onConfirm={handleConfirmSave} onDiscard={handleDiscardChanges} onCancel={() => setConfirmVisible(false)} loading={saving} />
+
+			{/* Modal confirmar cambios */}
+			<ConfirmChangesModal
+				visible={confirmVisible}
+				title='¿Guardar cambios?'
+				description='Se actualizarán tu nombre, deportes favoritos y tu zona.'
+				onConfirm={handleConfirmSave}
+				onDiscard={handleDiscardChanges}
+				onCancel={() => setConfirmVisible(false)}
+				loading={saving}
+			/>
 		</SafeAreaView>
 	)
 }

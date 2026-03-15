@@ -5,33 +5,41 @@ import { useMatches } from '@/context/MatchContext'
 import { colors } from '@/theme/colors'
 import { MatchWithCreator } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 export default function ExploreScreen() {
-	const { matches, isLoading, error, filters, setFilters, refreshMatches } = useMatches()
+	const { matches, isLoading, error, filters, setFilters, clearFilters, refreshMatches } = useMatches()
 
-	const handleMatchPress = (match: MatchWithCreator) => {
-		router.push(`/match/${match.id}`)
-	}
+	// Recarga al volver a la tab Explorar
+	useFocusEffect(
+		useCallback(() => {
+			refreshMatches()
+		}, []),
+	)
 
-	const handleJoinPress = (match: MatchWithCreator) => {
-		router.push(`/match/${match.id}`)
-	}
+	const filteredMatches = useMemo(() => (filters.sport ? matches.filter((m) => m.sport === filters.sport) : matches), [matches, filters])
+
+	const handleMatchPress = (match: MatchWithCreator) => router.push(`/match/${match.id}`)
 
 	const renderHeader = () => (
 		<View>
-			{/* Sport Filters */}
-			<SportFilter selectedSport={filters.sport} onSelectSport={(sport) => setFilters({ ...filters, sport })} />
-
-			{/* Section Header */}
+			<SportFilter
+				selectedSport={filters.sport}
+				onSelectSport={(sport) => {
+					if (filters.sport === sport) clearFilters()
+					else setFilters({ ...filters, sport })
+				}}
+			/>
 			<View style={styles.sectionHeader}>
-				<Text style={styles.sectionTitle}>Partidos Disponibles</Text>
-				<TouchableOpacity>
-					<Text style={styles.mapButtonText}>Ver Mapa</Text>
-				</TouchableOpacity>
+				<Text style={styles.sectionTitle}>Partidos Disponibles {filteredMatches.length > 0 && <Text style={{ fontSize: 14, color: colors.textSecondaryDark }}>({filteredMatches.length})</Text>}</Text>
+				{filters.sport && (
+					<TouchableOpacity onPress={clearFilters}>
+						<Text style={styles.mapButtonText}>Limpiar filtro</Text>
+					</TouchableOpacity>
+				)}
 			</View>
 		</View>
 	)
@@ -40,7 +48,7 @@ export default function ExploreScreen() {
 		<View style={styles.emptyContainer}>
 			<Ionicons name='calendar-outline' size={64} color={colors.textSecondaryDark} />
 			<Text style={styles.emptyTitle}>No hay partidos disponibles</Text>
-			<Text style={styles.emptyText}>{filters.sport ? 'No hay partidos de este deporte en este momento' : 'Se el primero en crear un partido'}</Text>
+			<Text style={styles.emptyText}>{filters.sport ? 'No hay partidos de este deporte en este momento' : 'Sé el primero en crear un partido'}</Text>
 			<TouchableOpacity style={styles.createButton} onPress={() => router.push('/match/Create')}>
 				<Ionicons name='add' size={20} color={colors.backgroundDark} />
 				<Text style={styles.createButtonText}>Crear Partido</Text>
@@ -48,11 +56,10 @@ export default function ExploreScreen() {
 		</View>
 	)
 
-	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCardComponent match={item} onPress={() => handleMatchPress(item)} onJoin={() => handleJoinPress(item)} />, [])
-	const filteredMatches = useMemo(() => (filters.sport ? matches.filter((m) => m.sport === filters.sport) : matches), [matches, filters])
+	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCardComponent match={item} onPress={() => handleMatchPress(item)} onJoin={() => handleMatchPress(item)} />, [])
+
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
-			{/* Header */}
 			<View style={styles.header}>
 				<View style={styles.headerLeft}>
 					<TouchableOpacity style={styles.avatarButton}>
@@ -73,7 +80,6 @@ export default function ExploreScreen() {
 				</View>
 			</View>
 
-			{/* Content */}
 			{isLoading && filteredMatches.length === 0 ? (
 				<View style={styles.loadingContainer}>
 					<ActivityIndicator size='large' color={colors.primary} />
@@ -88,8 +94,6 @@ export default function ExploreScreen() {
 			) : (
 				<FlatList data={filteredMatches} keyExtractor={(item) => item.id} renderItem={renderItem} ListHeaderComponent={renderHeader} ListEmptyComponent={renderEmpty} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refreshMatches} tintColor={colors.primary} />} ItemSeparatorComponent={() => <View style={styles.separator} />} />
 			)}
-
-			{/* FAB */}
 		</SafeAreaView>
 	)
 }

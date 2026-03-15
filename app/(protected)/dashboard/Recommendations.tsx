@@ -2,36 +2,16 @@ import { styles } from '@/assets/styles/Dashboard.styles'
 import { useMatches } from '@/context/MatchContext'
 import { MatchWithCreator } from '@/types/database.types'
 import { getSportImage } from '@/Utils/sportImage'
+import { colors } from '@/theme/colors'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useEffect, useState } from 'react'
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native'
 
 export default function Recommendations() {
-	const [recommendedMatches, setRecommendedMatches] = useState<MatchWithCreator[]>([])
-	const [loading, setLoading] = useState(true)
-	const { matches } = useMatches()
-	const recommended = matches.slice(0, 5)
+	const { matches, isLoading } = useMatches()
+	const recommendedMatches = matches.slice(0, 5)
 
-	useEffect(() => {
-		loadMatches()
-	}, [])
-
-	const loadMatches = async () => {
-		try {
-			setLoading(true)
-			setRecommendedMatches(recommended)
-		} catch (error) {
-			console.log(error)
-		} finally {
-			setLoading(false)
-		}
-	}
 	const handleMatchPress = (match: MatchWithCreator) => {
-		router.push(`/match/${match.id}`)
-	}
-
-	const handleJoinPress = (match: MatchWithCreator) => {
 		router.push(`/match/${match.id}`)
 	}
 
@@ -40,32 +20,36 @@ export default function Recommendations() {
 			<View style={styles.sectionHeader}>
 				<Text style={styles.sectionTitle}>Recomendados en tu zona</Text>
 				<View style={styles.locationBadge}>
-					<Ionicons name='navigate' size={12} color='#34d399' />
+					<Ionicons name='navigate' size={12} color={colors.primary} />
 					<Text style={styles.locationBadgeText}>Buenos Aires</Text>
 				</View>
 			</View>
 
-			{loading && (
+			{isLoading && (
 				<View style={{ paddingVertical: 20 }}>
-					<ActivityIndicator size='small' color='#34d399' />
+					<ActivityIndicator size='small' color={colors.primary} />
 				</View>
 			)}
 
-			{!loading && recommendedMatches.length === 0 && (
+			{!isLoading && recommendedMatches.length === 0 && (
 				<View style={styles.matchCard}>
-					<Text style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>No hay partidos activos en tu zona 🎾</Text>
+					<Text style={styles.matchLocation}>No hay partidos activos en tu zona 🎾</Text>
 				</View>
 			)}
 
 			{recommendedMatches.map((item) => (
-				<TouchableOpacity key={item.id} style={styles.container} onPress={() => handleMatchPress(item)} activeOpacity={0.9}>
-					<View style={styles.matchCard}>
-						<View style={styles.matchImageContainer}>
-							<Image source={getSportImage(item.sport)} style={styles.matchImage} resizeMode='cover' />
-						</View>
-						<View style={styles.matchInfo}>
-							<Text style={styles.matchTitle}>{item.title}</Text>
-						</View>
+				<TouchableOpacity
+					key={item.id}
+					style={styles.matchCard}
+					onPress={() => handleMatchPress(item)}
+					activeOpacity={0.9}
+				>
+					<View style={styles.matchImageContainer}>
+						<Image source={getSportImage(item.sport)} style={styles.matchImage} resizeMode='cover' />
+					</View>
+					<View style={styles.matchInfo}>
+						<Text style={styles.matchTitle}>{item.title}</Text>
+						<Text style={styles.matchLocation}>{item.venue_name}</Text>
 					</View>
 				</TouchableOpacity>
 			))}

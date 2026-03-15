@@ -1,33 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient } from '@supabase/supabase-js'
-import * as SecureStore from 'expo-secure-store'
+import { router } from 'expo-router'
 import 'react-native-url-polyfill/auto'
-
-// Custom storage adapter using expo-secure-store
-const ExpoSecureStoreAdapter = {
-	getItem: async (key: string): Promise<string | null> => {
-		try {
-			return await SecureStore.getItemAsync(key)
-		} catch (error) {
-			console.error('SecureStore getItem error:', error)
-			return null
-		}
-	},
-	setItem: async (key: string, value: string): Promise<void> => {
-		try {
-			await SecureStore.setItemAsync(key, value)
-		} catch (error) {
-			console.error('SecureStore setItem error:', error)
-		}
-	},
-	removeItem: async (key: string): Promise<void> => {
-		try {
-			await SecureStore.deleteItemAsync(key)
-		} catch (error) {
-			console.error('SecureStore removeItem error:', error)
-		}
-	},
-}
 
 export const supabase = createClient(process.env.EXPO_PUBLIC_SUPABASE_URL!, process.env.EXPO_PUBLIC_SUPABASE_KEY!, {
 	auth: {
@@ -38,7 +12,21 @@ export const supabase = createClient(process.env.EXPO_PUBLIC_SUPABASE_URL!, proc
 	},
 })
 
-// Helper to get current user
+// Interceptor de sesión expirada:
+// Supabase llama este listener cuando el token cambia o expira.
+// Si el evento es SIGNED_OUT y no hay sesión activa, redirigir al login.
+supabase.auth.onAuthStateChange((event, session) => {
+	if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+		// Navegar al login de forma segura (puede llamarse antes de que el router esté listo)
+		try {
+			router.replace('/(auth)/Login')
+		} catch {
+			// Router aún no montado — la redirección ocurrirá cuando se monte el layout raíz
+		}
+	}
+})
+
+// Helper para obtener el usuario actual
 export const getCurrentUser = async () => {
 	const {
 		data: { user },
@@ -48,7 +36,7 @@ export const getCurrentUser = async () => {
 	return user
 }
 
-// Helper to get current session
+// Helper para obtener la sesión actual
 export const getCurrentSession = async () => {
 	const {
 		data: { session },

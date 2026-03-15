@@ -4,12 +4,18 @@ import { typography } from '@/theme/typography'
 import { StyleSheet } from 'react-native'
 
 export const styles = StyleSheet.create({
-	container: {
+	// Wrapper de la pantalla completa
+	screenContainer: {
 		flex: 1,
 		backgroundColor: colors.backgroundDark,
+	},
+	// Estilo de cada ítem de lista — usado en NotificationItem
+	container: {
+		flexDirection: 'row',
+		alignItems: 'center',
 		paddingHorizontal: spacing.lg,
 		paddingVertical: spacing.md,
-		borderBottomWidth: 1,
+		borderBottomWidth: 0.5,
 		borderBottomColor: colors.borderDark,
 	},
 	header: {
@@ -26,6 +32,7 @@ export const styles = StyleSheet.create({
 		justifyContent: 'center',
 		backgroundColor: colors.backgroundDark,
 		padding: spacing.xl,
+		paddingTop: 80,
 	},
 	emptyTitle: {
 		...typography.h3,
@@ -46,8 +53,9 @@ export const styles = StyleSheet.create({
 		flex: 1,
 		marginLeft: spacing.md,
 	},
+	// "bodyBold" no existe en el tema — reemplazado por labelLarge
 	title: {
-		...typography.bodyBold,
+		...typography.labelLarge,
 		color: colors.textPrimaryDark,
 	},
 	body: {
