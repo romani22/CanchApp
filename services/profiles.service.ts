@@ -18,10 +18,19 @@ export type UserStats = {
 function serializeCoords(data: Partial<Profile>): Record<string, unknown> {
 	const result: Record<string, unknown> = { ...data }
 
-	if ('zone_coordinates' in result && result.zone_coordinates != null) {
-		const coords = result.zone_coordinates as { x: number; y: number }
-		// Formato que acepta PostgreSQL POINT: "(longitud,latitud)"
-		result.zone_coordinates = `(${coords.x},${coords.y})` as any
+	if ('zone_coordinates' in result) {
+		const coords = result.zone_coordinates as { x?: number; y?: number } | null
+
+		// ✅ Solo serializa si ambos valores existen
+		if (coords?.x != null && coords?.y != null) {
+			result.zone_coordinates = `(${coords.x},${coords.y})`
+		} else {
+			// 🔥 Opción 1: mandar null (recomendado)
+			result.zone_coordinates = null
+
+			// 🔥 Opción 2: directamente eliminar el campo
+			// delete result.zone_coordinates
+		}
 	}
 
 	return result

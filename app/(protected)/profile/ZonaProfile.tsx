@@ -86,7 +86,7 @@ function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) 
 					<View style={localStyles.coordsRow}>
 						<Ionicons name='map-outline' size={12} color={colors.textSecondaryDark} />
 						<Text style={localStyles.coordsText}>
-							{coords.y.toFixed(4)}, {coords.x.toFixed(4)}
+							{coords.y.toFixed(6)}, {coords.x.toFixed(6)}
 						</Text>
 					</View>
 				)}

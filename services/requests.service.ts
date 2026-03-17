@@ -133,8 +133,10 @@ export const acceptRequest = async (requestId: string): Promise<void> => {
 	if (participantError) {
 		console.error('Error adding participant:', participantError)
 		// Rollback the status update
-		await supabase.from('join_requests').update({ status: 'pending' }).eq('id', requestId)
-		throw participantError
+		const { error } = await supabase.rpc('accept_join_request', {
+			request_id: requestId,
+		})
+		if (error) throw error
 	}
 }
 

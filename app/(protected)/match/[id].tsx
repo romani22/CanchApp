@@ -40,15 +40,16 @@ export default function MatchDetail() {
 		}
 	}, [id])
 
-	// Recarga cada vez que la pantalla queda en foco (ej: al volver de Edit)
+	// Recarga al volver a la pantalla (ej: desde Edit)
 	useFocusEffect(
 		useCallback(() => {
 			setLoading(true)
+			setNotFound(false)
 			loadMatch()
 		}, [loadMatch]),
 	)
 
-	// Suscripción realtime a cambios de participantes
+	// Realtime: se actualiza automáticamente cuando alguien se une o sale
 	useEffect(() => {
 		if (!id) return
 		const channel = supabase
@@ -96,28 +97,47 @@ export default function MatchDetail() {
 				<Ionicons name='alert-circle-outline' size={64} color={colors.textSecondaryDark} />
 				<Text style={[styles.title, { textAlign: 'center', marginTop: 16 }]}>Partido no encontrado</Text>
 				<Text style={[styles.subtitle, { textAlign: 'center', marginTop: 8 }]}>Este partido ya no existe o fue cancelado.</Text>
-				<TouchableOpacity style={[styles.mainButton, { marginTop: 32 }]} onPress={() => router.replace('/Explore')}>
+				<TouchableOpacity style={[styles.mainButton, { marginTop: 32, paddingHorizontal: 24 }]} onPress={() => router.replace('/Explore')}>
 					<Text style={styles.mainButtonText}>Volver a Explorar</Text>
 				</TouchableOpacity>
 			</View>
 		)
 	}
 
-	const currentPlayers = match.participants?.length || 0
-	const isFull = currentPlayers >= match.total_players
+	// ── Datos derivados ───────────────────────────────────────────────────
+
+	// current_players: lo mantiene el trigger de la DB (fuente de verdad)
+	// participants.length: lo que realmente cargamos con la query (puede diferir levemente)
+	// Usamos current_players de la DB como cifra oficial
+	const currentPlayers = match.participants?.length ?? 0
+	const playersNeeded = Math.max(0, match.total_players - currentPlayers)
+	console.log(match)
+
+	const isFull = playersNeeded === 0
 	const isOpen = match.status === 'open'
 	const isCreator = match.creator_id === user?.id
-	const isParticipant = match.participants?.some((p: any) => p.user_id === user?.id)
+	const isParticipant = match.participants?.some((p: any) => p.user_id === user?.id) ?? false
+
+	// Fecha formateada con date-fns (evita el problema de zona horaria del split manual)
 	const matchDate = parseISO(match.starts_at)
+
+	// Texto del nivel en español
+	const levelLabel: Record<string, string> = {
+		principiante: 'Principiante',
+		intermedio: 'Intermedio',
+		avanzado: 'Avanzado',
+	}
 
 	return (
 		<View style={styles.container}>
 			<ScrollView bounces={false} contentContainerStyle={styles.scrollContent}>
+				{/* Imagen de portada */}
 				<ImageBackground source={getSportImage(match.sport)} style={styles.headerImage}>
 					<SafeAreaView style={styles.headerButtons}>
 						<TouchableOpacity style={styles.iconButton} onPress={() => router.back()}>
 							<Ionicons name='arrow-back' size={24} color='white' />
 						</TouchableOpacity>
+						{/* Botón editar — solo visible para el creador */}
 						{isCreator && (
 							<TouchableOpacity style={styles.iconButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
 								<Ionicons name='pencil' size={20} color='white' />
@@ -130,25 +150,37 @@ export default function MatchDetail() {
 					<Text style={styles.title}>{match.title}</Text>
 					<Text style={styles.subtitle}>{match.venue_name}</Text>
 
+					{/* Stats row: fecha · nivel · jugadores */}
 					<View style={styles.statsRow}>
+						{/* Fecha y hora */}
 						<View style={styles.statItem}>
 							<Ionicons name='time-outline' size={20} color={colors.primary} />
-							<Text style={styles.statText}>{format(matchDate, 'dd/MM/yyyy HH:mm')}</Text>
+							<Text style={styles.statText}>
+								{format(matchDate, 'dd/MM')} · {format(matchDate, 'HH:mm')}
+							</Text>
 						</View>
+
+						{/* Nivel */}
 						<View style={[styles.statItem, styles.statBorder]}>
 							<Ionicons name='stats-chart' size={20} color={colors.primary} />
-							<Text style={styles.statText}>Nivel: {match.skill_level}</Text>
+							<Text style={styles.statText}>{levelLabel[match.skill_level] ?? match.skill_level}</Text>
 						</View>
+
+						{/* Jugadores: confirmados / total  ·  faltan N */}
 						<View style={styles.statItem}>
 							<Ionicons name='people-outline' size={20} color={colors.primary} />
 							<Text style={styles.statText}>
-								{currentPlayers} / {match.total_players}
+								{currentPlayers}/{match.total_players}
 							</Text>
+							{playersNeeded > 0 && <Text style={[styles.statText, { color: colors.warning, marginLeft: 2 }]}>({playersNeeded} faltan)</Text>}
+							{isFull && <Text style={[styles.statText, { color: colors.success, marginLeft: 2 }]}>✓ completo</Text>}
 						</View>
 					</View>
 
+					{/* Lista de participantes */}
 					<ParticipantsMatch match={match} />
 
+					{/* Ubicación */}
 					<View style={styles.mapContainer}>
 						<View style={styles.mapOverlay}>
 							<Ionicons name='location' size={24} color={colors.primary} />
@@ -156,6 +188,7 @@ export default function MatchDetail() {
 						</View>
 					</View>
 
+					{/* Descripción si existe */}
 					{match.description ? (
 						<View style={[styles.section, { marginTop: 8 }]}>
 							<Text style={styles.sectionTitle}>Observaciones</Text>
@@ -165,16 +198,24 @@ export default function MatchDetail() {
 				</View>
 			</ScrollView>
 
+			{/* Footer */}
 			<View style={styles.footer}>
 				{isCreator ? (
-					<TouchableOpacity style={styles.mainButton} onPress={() => router.push(`/match/Edit?id=${id}`)}>
+					// Creador: ver botón de editar en el footer también
+					<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
 						<Text style={styles.mainButtonText}>Editar partido</Text>
 					</TouchableOpacity>
 				) : isParticipant ? (
-					<TouchableOpacity style={[styles.mainButton, { backgroundColor: colors.error }]} onPress={handleLeave} disabled={actionLoading}>
+					// Participante: puede salir
+					<TouchableOpacity
+						style={[styles.mainButton, { backgroundColor: colors.error }]}
+						onPress={handleLeave}
+						disabled={actionLoading} // FIX: solo deshabilitar mientras carga, NO cuando isParticipant
+					>
 						{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
 					</TouchableOpacity>
 				) : (
+					// Visitante: puede unirse si hay lugar
 					<TouchableOpacity style={[styles.mainButton, (!isOpen || isFull) && { backgroundColor: '#555' }]} disabled={!isOpen || isFull || actionLoading} onPress={handleJoin}>
 						{actionLoading ? <ActivityIndicator color='white' /> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>Unirme al partido</Text>}
 					</TouchableOpacity>
