@@ -1,6 +1,7 @@
 import { styles } from '@/assets/styles/Match.styles'
 import ParticipantsMatch from '@/components/match/ParticipantsMatch'
 import Loader from '@/components/ui/Loader'
+import { levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
@@ -40,7 +41,6 @@ export default function MatchDetail() {
 		}
 	}, [id])
 
-	// Recarga al volver a la pantalla (ej: desde Edit)
 	useFocusEffect(
 		useCallback(() => {
 			setLoading(true)
@@ -49,7 +49,6 @@ export default function MatchDetail() {
 		}, [loadMatch]),
 	)
 
-	// Realtime: se actualiza automáticamente cuando alguien se une o sale
 	useEffect(() => {
 		if (!id) return
 		const channel = supabase
@@ -105,28 +104,16 @@ export default function MatchDetail() {
 	}
 
 	// ── Datos derivados ───────────────────────────────────────────────────
-
-	// current_players: lo mantiene el trigger de la DB (fuente de verdad)
-	// participants.length: lo que realmente cargamos con la query (puede diferir levemente)
-	// Usamos current_players de la DB como cifra oficial
+	// Fuente de verdad: participants array que viene de la query (incluye usuarios y guests reales)
 	const currentPlayers = match.participants?.length ?? 0
 	const playersNeeded = Math.max(0, match.total_players - currentPlayers)
-	console.log(match)
 
 	const isFull = playersNeeded === 0
 	const isOpen = match.status === 'open'
 	const isCreator = match.creator_id === user?.id
 	const isParticipant = match.participants?.some((p: any) => p.user_id === user?.id) ?? false
 
-	// Fecha formateada con date-fns (evita el problema de zona horaria del split manual)
 	const matchDate = parseISO(match.starts_at)
-
-	// Texto del nivel en español
-	const levelLabel: Record<string, string> = {
-		principiante: 'Principiante',
-		intermedio: 'Intermedio',
-		avanzado: 'Avanzado',
-	}
 
 	return (
 		<View style={styles.container}>
@@ -137,7 +124,6 @@ export default function MatchDetail() {
 						<TouchableOpacity style={styles.iconButton} onPress={() => router.back()}>
 							<Ionicons name='arrow-back' size={24} color='white' />
 						</TouchableOpacity>
-						{/* Botón editar — solo visible para el creador */}
 						{isCreator && (
 							<TouchableOpacity style={styles.iconButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
 								<Ionicons name='pencil' size={20} color='white' />
@@ -150,9 +136,8 @@ export default function MatchDetail() {
 					<Text style={styles.title}>{match.title}</Text>
 					<Text style={styles.subtitle}>{match.venue_name}</Text>
 
-					{/* Stats row: fecha · nivel · jugadores */}
+					{/* Stats row */}
 					<View style={styles.statsRow}>
-						{/* Fecha y hora */}
 						<View style={styles.statItem}>
 							<Ionicons name='time-outline' size={20} color={colors.primary} />
 							<Text style={styles.statText}>
@@ -160,13 +145,11 @@ export default function MatchDetail() {
 							</Text>
 						</View>
 
-						{/* Nivel */}
 						<View style={[styles.statItem, styles.statBorder]}>
 							<Ionicons name='stats-chart' size={20} color={colors.primary} />
-							<Text style={styles.statText}>{levelLabel[match.skill_level] ?? match.skill_level}</Text>
+							<Text style={styles.statText}>{levelLabels[match.skill_level as keyof typeof levelLabels] ?? match.skill_level}</Text>
 						</View>
 
-						{/* Jugadores: confirmados / total  ·  faltan N */}
 						<View style={styles.statItem}>
 							<Ionicons name='people-outline' size={20} color={colors.primary} />
 							<Text style={styles.statText}>
@@ -188,7 +171,6 @@ export default function MatchDetail() {
 						</View>
 					</View>
 
-					{/* Descripción si existe */}
 					{match.description ? (
 						<View style={[styles.section, { marginTop: 8 }]}>
 							<Text style={styles.sectionTitle}>Observaciones</Text>
@@ -201,21 +183,14 @@ export default function MatchDetail() {
 			{/* Footer */}
 			<View style={styles.footer}>
 				{isCreator ? (
-					// Creador: ver botón de editar en el footer también
 					<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
 						<Text style={styles.mainButtonText}>Editar partido</Text>
 					</TouchableOpacity>
 				) : isParticipant ? (
-					// Participante: puede salir
-					<TouchableOpacity
-						style={[styles.mainButton, { backgroundColor: colors.error }]}
-						onPress={handleLeave}
-						disabled={actionLoading} // FIX: solo deshabilitar mientras carga, NO cuando isParticipant
-					>
+					<TouchableOpacity style={[styles.mainButton, { backgroundColor: colors.error }]} onPress={handleLeave} disabled={actionLoading}>
 						{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
 					</TouchableOpacity>
 				) : (
-					// Visitante: puede unirse si hay lugar
 					<TouchableOpacity style={[styles.mainButton, (!isOpen || isFull) && { backgroundColor: '#555' }]} disabled={!isOpen || isFull || actionLoading} onPress={handleJoin}>
 						{actionLoading ? <ActivityIndicator color='white' /> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>Unirme al partido</Text>}
 					</TouchableOpacity>

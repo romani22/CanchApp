@@ -1,6 +1,7 @@
 import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
 import Loader from '@/components/ui/Loader'
+import { buildMatchTitle, levels, sports } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
@@ -11,23 +12,16 @@ import DateTimePicker from '@react-native-community/datetimepicker'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-const sports: { key: SportType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-	{ key: 'futbol', label: 'Futbol', icon: 'football' },
-	{ key: 'padel', label: 'Padel', icon: 'tennisball' },
-	{ key: 'basquet', label: 'Basquet', icon: 'basketball' },
-	{ key: 'voley', label: 'Voley', icon: 'baseball' },
-	{ key: 'tenis', label: 'Tenis', icon: 'tennisball' },
-]
-
-const levels: { key: SkillLevel; label: string }[] = [
-	{ key: 'principiante', label: 'Bajo' },
-	{ key: 'intermedio', label: 'Medio' },
-	{ key: 'avanzado', label: 'Alto' },
-]
+type ParticipantRow = {
+	id: string
+	user_id: string | null
+	guest_name: string | null
+	user: { id: string; full_name: string; avatar_url: string | null } | null
+}
 
 export default function EditMatchScreen() {
 	const { id } = useLocalSearchParams()
@@ -36,27 +30,24 @@ export default function EditMatchScreen() {
 	const [loadingMatch, setLoadingMatch] = useState(true)
 	const [saving, setSaving] = useState(false)
 
-	// Form state — se inicializa con los datos del partido
 	const [sport, setSport] = useState<SportType>('futbol')
+	const [titleMatch, setTitleMatch] = useState('')
 	const [date, setDate] = useState(new Date())
 	const [time, setTime] = useState(new Date())
 	const [showDatePicker, setShowDatePicker] = useState(false)
 	const [showTimePicker, setShowTimePicker] = useState(false)
 	const [venueName, setVenueName] = useState('')
 	const [totalPlayers, setTotalPlayers] = useState(10)
-	const [playersNeeded, setPlayersNeeded] = useState(4)
 	const [skillLevel, setSkillLevel] = useState<SkillLevel>('intermedio')
 	const [description, setDescription] = useState('')
-
-	// Participantes invitados actuales (guests)
-	const [existingParticipants, setExistingParticipants] = useState<any[]>([])
+	const [participants, setParticipants] = useState<ParticipantRow[]>([])
 	const [newGuestName, setNewGuestName] = useState('')
 
-	useEffect(() => {
-		loadMatch()
-	}, [])
+	// Calculado igual que en Create — siempre derivado, nunca guardado aparte
+	const playersNeeded = Math.max(0, totalPlayers - participants.length)
+	const slotsAvailable = totalPlayers - participants.length
 
-	const loadMatch = async () => {
+	const loadMatch = useCallback(async () => {
 		try {
 			const { data, error } = await matchesService.getById(id as string)
 			if (error) throw error
@@ -65,43 +56,44 @@ export default function EditMatchScreen() {
 				return
 			}
 
-			// Verificar que el usuario es el creador
 			if (data.creator_id !== user?.id) {
 				Alert.alert('Sin permiso', 'Solo el creador puede editar este partido.')
 				router.back()
 				return
 			}
 
-			// Inicializar form con datos existentes
 			setSport(data.sport)
+			setTitleMatch(data.title)
 			setVenueName(data.venue_name)
 			setTotalPlayers(data.total_players)
-			setPlayersNeeded(data.players_needed)
 			setSkillLevel(data.skill_level)
 			setDescription(data.description || '')
-
 			const matchDate = parseISO(data.starts_at)
 			setDate(matchDate)
 			setTime(matchDate)
-
-			setExistingParticipants(data.participants || [])
+			setParticipants((data.participants as unknown as ParticipantRow[]) ?? [])
 		} catch (err) {
 			console.error('[EditMatch] Error cargando:', err)
 			router.back()
 		} finally {
 			setLoadingMatch(false)
 		}
+	}, [id, user?.id])
+
+	useEffect(() => {
+		loadMatch()
+	}, [loadMatch])
+
+	const handleTotalChange = (delta: number) => {
+		const next = totalPlayers + delta
+		// No puede ser menor que los participantes actuales ni mayor de 22
+		if (next < participants.length || next < 4 || next > 22) return
+		setTotalPlayers(next)
 	}
 
 	const handleSave = async () => {
 		if (!venueName.trim()) {
 			Alert.alert('Error', 'Ingresá el nombre de la cancha o club')
-			return
-		}
-
-		const currentParticipants = existingParticipants.length
-		if (currentParticipants > totalPlayers) {
-			Alert.alert('Error', `Ya hay ${currentParticipants} participantes. El total no puede ser menor a eso.`)
 			return
 		}
 
@@ -111,7 +103,7 @@ export default function EditMatchScreen() {
 			setSaving(true)
 			await matchesService.update(id as string, {
 				sport,
-				title: `${sports.find((s) => s.key === sport)?.label} ${totalPlayers > 6 ? '5' : '3'}v${totalPlayers > 6 ? '5' : '3'}`,
+				title: titleMatch === '' ? buildMatchTitle(sport, totalPlayers) : titleMatch,
 				starts_at,
 				venue_name: venueName.trim(),
 				total_players: totalPlayers,
@@ -119,8 +111,7 @@ export default function EditMatchScreen() {
 				skill_level: skillLevel,
 				description: description.trim() || null,
 			})
-
-			Alert.alert('Guardado', 'El partido fue actualizado correctamente.', [{ text: 'Ver partido', onPress: () => router.back() }])
+			Alert.alert('Guardado', 'El partido fue actualizado.', [{ text: 'Ver partido', onPress: () => router.back() }])
 		} catch (err) {
 			console.error('[EditMatch] Error guardando:', err)
 			Alert.alert('Error', 'No se pudo guardar. Intentá de nuevo.')
@@ -129,9 +120,11 @@ export default function EditMatchScreen() {
 		}
 	}
 
-	const handleRemoveParticipant = (participant: any) => {
-		const isGuest = !participant.user_id
-		const name = participant.user?.full_name || participant.guest_name || 'este jugador'
+	const handleRemoveParticipant = (participant: ParticipantRow) => {
+		const isCreatorParticipant = participant.user_id === user?.id
+		if (isCreatorParticipant) return // no se puede quitar al creador
+
+		const name = participant.user?.full_name ?? participant.guest_name ?? 'este jugador'
 
 		Alert.alert('Quitar jugador', `¿Querés quitar a ${name} del partido?`, [
 			{ text: 'Cancelar', style: 'cancel' },
@@ -140,12 +133,12 @@ export default function EditMatchScreen() {
 				style: 'destructive',
 				onPress: async () => {
 					try {
-						if (isGuest) {
+						if (participant.guest_name) {
 							await matchParticipantsService.removeGuest(id as string, participant.guest_name)
-						} else {
+						} else if (participant.user_id) {
 							await matchParticipantsService.leave(id as string, participant.user_id)
 						}
-						setExistingParticipants((prev) => prev.filter((p) => p.id !== participant.id))
+						setParticipants((prev) => prev.filter((p) => p.id !== participant.id))
 					} catch (err) {
 						console.error('[EditMatch] Error quitando participante:', err)
 						Alert.alert('Error', 'No se pudo quitar al jugador.')
@@ -157,31 +150,19 @@ export default function EditMatchScreen() {
 
 	const handleAddGuest = async () => {
 		if (!newGuestName.trim()) return
-
+		if (slotsAvailable <= 0) {
+			Alert.alert('Sin lugar', 'Ya completaste el total de jugadores.')
+			return
+		}
 		try {
 			const { error } = await matchParticipantsService.addGuest(id as string, newGuestName.trim())
 			if (error) throw error
-
-			// Agregar al estado local con estructura similar a la que devuelve la DB
-			setExistingParticipants((prev) => [
-				...prev,
-				{
-					id: `temp-${Date.now()}`,
-					user_id: null,
-					guest_name: newGuestName.trim(),
-					user: null,
-				},
-			])
+			setParticipants((prev) => [...prev, { id: `temp-${Date.now()}`, user_id: null, guest_name: newGuestName.trim(), user: null }])
 			setNewGuestName('')
 		} catch (err) {
-			console.error('[EditMatch] Error agregando guest:', err)
+			console.error('[EditMatch] Error agregando invitado:', err)
 			Alert.alert('Error', 'No se pudo agregar el jugador.')
 		}
-	}
-
-	const adjustCount = (current: number, delta: number, min: number, max: number, setter: (v: number) => void) => {
-		const next = current + delta
-		if (next >= min && next <= max) setter(next)
 	}
 
 	if (loadingMatch) return <Loader title='Cargando partido...' />
@@ -197,8 +178,15 @@ export default function EditMatchScreen() {
 				<View style={styles.headerSpacer} />
 			</View>
 
-			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-				{/* Deporte */}
+			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps='handled'>
+				{/* ── Titulo ── */}
+				<View style={styles.section}>
+					<Text style={styles.sectionTitle}>Titulo</Text>
+					<View style={styles.inputWrapper}>
+						<TextInput style={styles.input} placeholder='Titulo para el partido' placeholderTextColor={colors.textSecondaryDark} value={titleMatch} onChangeText={setTitleMatch} />
+					</View>
+				</View>
+				{/* ── Deporte ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Deporte</Text>
 					<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
@@ -210,7 +198,7 @@ export default function EditMatchScreen() {
 					</ScrollView>
 				</View>
 
-				{/* Fecha y hora */}
+				{/* ── Fecha y hora ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Fecha y Hora</Text>
 					<View style={styles.dateTimeRow}>
@@ -248,7 +236,7 @@ export default function EditMatchScreen() {
 					/>
 				)}
 
-				{/* Ubicación */}
+				{/* ── Ubicación ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Ubicación</Text>
 					<View style={styles.inputWrapper}>
@@ -257,65 +245,67 @@ export default function EditMatchScreen() {
 					</View>
 				</View>
 
-				{/* Jugadores */}
+				{/* ── Jugadores ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Jugadores</Text>
 
 					<View style={styles.counterRow}>
 						<View style={styles.counterInfo}>
 							<Text style={styles.counterLabel}>Total de jugadores</Text>
-							<Text style={styles.counterHint}>Capacidad de la cancha</Text>
+							<Text style={styles.counterHint}>Mínimo: {participants.length} (actuales)</Text>
 						</View>
 						<View style={styles.counterControls}>
-							<TouchableOpacity style={styles.counterButton} onPress={() => adjustCount(totalPlayers, -1, existingParticipants.length, 22, setTotalPlayers)}>
+							<TouchableOpacity style={styles.counterButton} onPress={() => handleTotalChange(-1)}>
 								<Ionicons name='remove' size={20} color={colors.primary} />
 							</TouchableOpacity>
 							<Text style={styles.counterValue}>{totalPlayers}</Text>
-							<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={() => adjustCount(totalPlayers, 1, existingParticipants.length, 22, setTotalPlayers)}>
+							<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={() => handleTotalChange(1)}>
 								<Ionicons name='add' size={20} color={colors.backgroundDark} />
 							</TouchableOpacity>
 						</View>
 					</View>
 
-					<View style={styles.counterRow}>
-						<View style={styles.counterInfo}>
-							<Text style={styles.counterLabel}>Jugadores faltantes</Text>
-							<Text style={styles.counterHint}>Cuántos más buscás</Text>
+					{/* Resumen — igual que en Create */}
+					<View style={styles.summaryRow}>
+						<View style={styles.summaryItem}>
+							<Text style={styles.summaryNum}>{participants.length}</Text>
+							<Text style={styles.summaryLabel}>Confirmados</Text>
 						</View>
-						<View style={styles.counterControls}>
-							<TouchableOpacity style={styles.counterButton} onPress={() => adjustCount(playersNeeded, -1, 0, totalPlayers - existingParticipants.length, setPlayersNeeded)}>
-								<Ionicons name='remove' size={20} color={colors.primary} />
-							</TouchableOpacity>
-							<Text style={styles.counterValue}>{playersNeeded}</Text>
-							<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={() => adjustCount(playersNeeded, 1, 0, totalPlayers - existingParticipants.length, setPlayersNeeded)}>
-								<Ionicons name='add' size={20} color={colors.backgroundDark} />
-							</TouchableOpacity>
+						<View style={styles.summaryDivider} />
+						<View style={styles.summaryItem}>
+							<Text style={[styles.summaryNum, { color: playersNeeded > 0 ? colors.warning : colors.success }]}>{playersNeeded}</Text>
+							<Text style={styles.summaryLabel}>Faltan</Text>
+						</View>
+						<View style={styles.summaryDivider} />
+						<View style={styles.summaryItem}>
+							<Text style={styles.summaryNum}>{totalPlayers}</Text>
+							<Text style={styles.summaryLabel}>Total</Text>
 						</View>
 					</View>
 				</View>
 
-				{/* Lista de participantes actuales */}
+				{/* ── Participantes actuales ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>
-						Participantes ({existingParticipants.length}/{totalPlayers})
+						Jugadores confirmados{' '}
+						<Text style={{ color: colors.textSecondaryDark, fontSize: 13, fontWeight: '400' }}>
+							({participants.length}/{totalPlayers})
+						</Text>
 					</Text>
 
-					{existingParticipants.map((p) => {
-						const isCreator = p.user_id === user?.id
-						const name = p.user?.full_name || p.guest_name || 'Sin nombre'
+					{participants.map((p) => {
+						const isCreatorRow = p.user_id === user?.id
+						const name = p.user?.full_name ?? p.guest_name ?? 'Sin nombre'
 						const isGuest = !p.user_id
 
 						return (
 							<View key={p.id} style={localStyles.participantRow}>
-								<View style={localStyles.participantAvatar}>
-									<Text style={localStyles.participantInitial}>{name.charAt(0).toUpperCase()}</Text>
-								</View>
+								{p.user?.avatar_url ? <Image source={{ uri: p.user.avatar_url }} style={localStyles.participantAvatar} /> : <View style={[localStyles.participantAvatar, { backgroundColor: isCreatorRow ? colors.primary : isGuest ? colors.surfaceDark : `${colors.info}30`, borderWidth: 1, borderColor: isCreatorRow ? colors.primary : isGuest ? colors.borderDark : colors.info }]}>{isCreatorRow ? <Ionicons name='star' size={14} color={colors.backgroundDark} /> : <Text style={[localStyles.participantInitial, { color: isGuest ? colors.textSecondaryDark : colors.info }]}>{name.charAt(0).toUpperCase()}</Text>}</View>}
 								<View style={localStyles.participantInfo}>
-									<Text style={localStyles.participantName}>{name}</Text>
-									<Text style={localStyles.participantBadge}>{isCreator ? 'Creador' : isGuest ? 'Invitado' : 'Registrado'}</Text>
+									<Text style={localStyles.participantName}>{isCreatorRow ? `${name} (vos)` : name}</Text>
+									<Text style={localStyles.participantBadge}>{isCreatorRow ? 'Creador' : isGuest ? 'Invitado' : 'Registrado'}</Text>
 								</View>
-								{/* No permitir quitar al creador */}
-								{!isCreator && (
+								{!isCreatorRow && (
 									<TouchableOpacity onPress={() => handleRemoveParticipant(p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
 										<Ionicons name='close-circle' size={22} color={colors.error} />
 									</TouchableOpacity>
@@ -324,16 +314,23 @@ export default function EditMatchScreen() {
 						)
 					})}
 
-					{/* Agregar invitado */}
-					<View style={[styles.guestInputRow, { marginTop: 12 }]}>
-						<TextInput style={[styles.input, { flex: 1 }]} placeholder='Agregar invitado por nombre' placeholderTextColor={colors.textSecondaryDark} value={newGuestName} onChangeText={setNewGuestName} onSubmitEditing={handleAddGuest} returnKeyType='done' />
-						<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={handleAddGuest}>
-							<Ionicons name='add' size={20} color={colors.backgroundDark} />
-						</TouchableOpacity>
-					</View>
+					{/* Agregar invitado — igual visual que Create */}
+					{slotsAvailable > 0 && (
+						<View style={[styles.guestInputRow, { marginTop: 12 }]}>
+							<View style={[styles.inputWrapper, { flex: 1 }]}>
+								<Ionicons name='person-add-outline' size={18} color={colors.textSecondaryDark} />
+								<TextInput style={styles.input} placeholder='Agregar invitado por nombre' placeholderTextColor={colors.textSecondaryDark} value={newGuestName} onChangeText={setNewGuestName} onSubmitEditing={handleAddGuest} returnKeyType='done' />
+							</View>
+							{newGuestName.trim().length > 0 && (
+								<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={handleAddGuest}>
+									<Ionicons name='add' size={20} color={colors.backgroundDark} />
+								</TouchableOpacity>
+							)}
+						</View>
+					)}
 				</View>
 
-				{/* Nivel */}
+				{/* ── Nivel ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Nivel de Juego</Text>
 					<View style={styles.levelSelector}>
@@ -350,7 +347,7 @@ export default function EditMatchScreen() {
 					</View>
 				</View>
 
-				{/* Observaciones */}
+				{/* ── Observaciones ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Observaciones (opcional)</Text>
 					<TextInput style={styles.textArea} placeholder='Información adicional sobre el partido...' placeholderTextColor={colors.textSecondaryDark} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical='top' />
@@ -387,14 +384,10 @@ const localStyles = StyleSheet.create({
 		width: 36,
 		height: 36,
 		borderRadius: 18,
-		backgroundColor: colors.surfaceDark,
-		borderWidth: 1,
-		borderColor: colors.borderDark,
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
 	participantInitial: {
-		color: colors.primary,
 		fontWeight: '700',
 		fontSize: 14,
 	},

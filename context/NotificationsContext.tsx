@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react'
+import { useAuth } from './AuthContext'
 
 interface NotificationsContextType {
 	unreadCount: number
@@ -14,7 +15,7 @@ const NotificationsContext = createContext<NotificationsContextType>({
 export const NotificationsProvider = ({ children }: { children: ReactNode }) => {
 	const [unreadCount, setUnreadCount] = useState(0)
 	const [userId, setUserId] = useState<string | null>(null)
-
+	const { user } = useAuth()
 	const refreshCount = async () => {
 		if (!userId) return
 
@@ -27,10 +28,6 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 		let channel: any
 
 		const setup = async () => {
-			const {
-				data: { user },
-			} = await supabase.auth.getUser()
-
 			if (!user) return
 			const fetchCount = async (uid: string) => {
 				const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', uid).eq('is_read', false)

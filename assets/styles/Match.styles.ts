@@ -379,6 +379,7 @@ export const styles = StyleSheet.create({
 	},
 	guestInputRow: {
 		flexDirection: 'row',
+		alignItems: 'center',
 		gap: spacing.sm,
 	},
 	guestListContainer: {

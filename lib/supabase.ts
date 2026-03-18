@@ -1,29 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient } from '@supabase/supabase-js'
-import { router } from 'expo-router'
 import 'react-native-url-polyfill/auto'
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY
 
-export const supabase = createClient(process.env.EXPO_PUBLIC_SUPABASE_URL!, process.env.EXPO_PUBLIC_SUPABASE_KEY!, {
+if (!supabaseUrl || !supabaseKey) {
+	throw new Error('Faltan variables de entorno EXPO_PUBLIC_SUPABASE_URL y/o EXPO_PUBLIC_SUPABASE_KEY')
+}
+export const supabase = createClient(supabaseUrl, supabaseKey, {
 	auth: {
 		storage: AsyncStorage,
 		autoRefreshToken: true,
 		persistSession: true,
 		detectSessionInUrl: false,
 	},
-})
-
-// Interceptor de sesión expirada:
-// Supabase llama este listener cuando el token cambia o expira.
-// Si el evento es SIGNED_OUT y no hay sesión activa, redirigir al login.
-supabase.auth.onAuthStateChange((event, session) => {
-	if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
-		// Navegar al login de forma segura (puede llamarse antes de que el router esté listo)
-		try {
-			router.replace('/(auth)/Login')
-		} catch {
-			// Router aún no montado — la redirección ocurrirá cuando se monte el layout raíz
-		}
-	}
 })
 
 // Helper para obtener el usuario actual

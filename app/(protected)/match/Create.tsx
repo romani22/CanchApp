@@ -1,5 +1,6 @@
 import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
+import { levels, sports } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
@@ -11,23 +12,9 @@ import DateTimePicker from '@react-native-community/datetimepicker'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { router } from 'expo-router'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-
-const sports: { key: SportType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-	{ key: 'futbol', label: 'Futbol', icon: 'football' },
-	{ key: 'padel', label: 'Padel', icon: 'tennisball' },
-	{ key: 'basquet', label: 'Basquet', icon: 'basketball' },
-	{ key: 'voley', label: 'Voley', icon: 'baseball' },
-	{ key: 'tenis', label: 'Tenis', icon: 'tennisball' },
-]
-
-const levels: { key: SkillLevel; label: string }[] = [
-	{ key: 'principiante', label: 'Bajo' },
-	{ key: 'intermedio', label: 'Medio' },
-	{ key: 'avanzado', label: 'Alto' },
-]
 
 type ConfirmedParticipant = { type: 'user'; id: string; userId: string; name: string; avatarUrl: string | null } | { type: 'guest'; id: string; name: string }
 
@@ -45,6 +32,7 @@ export default function CreateMatchScreen() {
 	const [sport, setSport] = useState<SportType>('futbol')
 	const [date, setDate] = useState(new Date())
 	const [time, setTime] = useState(new Date())
+	const [titleMatch, setTitleMatch] = useState('')
 	const [showDatePicker, setShowDatePicker] = useState(false)
 	const [showTimePicker, setShowTimePicker] = useState(false)
 	const [venueName, setVenueName] = useState('')
@@ -55,8 +43,7 @@ export default function CreateMatchScreen() {
 	const [searchQuery, setSearchQuery] = useState('')
 	const [searchResults, setSearchResults] = useState<UserSearchResult[]>([])
 	const [searching, setSearching] = useState(false)
-
-	// players_needed = cuántos faltan conseguir (se calcula automáticamente)
+	const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const playersNeeded = Math.max(0, totalPlayers - 1 - confirmed.length)
 	const slotsAvailable = totalPlayers - 1 - confirmed.length
 
@@ -64,27 +51,28 @@ export default function CreateMatchScreen() {
 	const handleSearch = useCallback(
 		async (query: string) => {
 			setSearchQuery(query)
+			if (searchTimer.current) clearTimeout(searchTimer.current)
 			if (query.trim().length < 2) {
 				setSearchResults([])
 				return
 			}
-			try {
-				setSearching(true)
-				const addedUserIds = confirmed.filter((p) => p.type === 'user').map((p) => (p as any).userId)
-				const { data } = await supabase
-					.from('profiles')
-					.select('id, full_name, avatar_url, skill_level')
-					.ilike('full_name', `%${query.trim()}%`)
-					.neq('id', user?.id ?? '')
-					.limit(5)
-				setSearchResults((data || []).filter((u) => !addedUserIds.includes(u.id)))
-			} catch (err) {
-				console.error('[Create] búsqueda:', err)
-			} finally {
-				setSearching(false)
-			}
+
+			searchTimer.current = setTimeout(async () => {
+				try {
+					setSearching(true)
+					const { data } = await supabase
+						.from('profiles')
+						.select('id, full_name, avatar_url, skill_level')
+						.ilike('full_name', `%${query.trim()}%`)
+						.neq('id', user?.id ?? '')
+						.limit(5)
+					setSearchResults(data ?? [])
+				} finally {
+					setSearching(false)
+				}
+			}, 300) // 300ms debounce
 		},
-		[confirmed, user?.id],
+		[user?.id],
 	)
 
 	const addUserParticipant = (u: UserSearchResult) => {
@@ -134,11 +122,12 @@ export default function CreateMatchScreen() {
 		setIsLoading(true)
 		try {
 			const starts_at = new Date(date.getFullYear(), date.getMonth(), date.getDate(), time.getHours(), time.getMinutes()).toISOString()
-
+			const playersPerSide = Math.floor(totalPlayers / 2)
+			const title = titleMatch === '' ? `${sport} ${playersPerSide}vs${playersPerSide}` : titleMatch
 			const match = await matchesService.create({
 				creator_id: user.id,
 				sport,
-				title: `${sports.find((s) => s.key === sport)?.label} ${totalPlayers > 6 ? '5' : '3'}v${totalPlayers > 6 ? '5' : '3'}`,
+				title: title,
 				description: description.trim() || undefined,
 				starts_at,
 				venue_name: venueName.trim(),
@@ -173,6 +162,14 @@ export default function CreateMatchScreen() {
 			</View>
 
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps='handled'>
+				{/* ── Titulo ── */}
+				<View style={styles.section}>
+					<Text style={styles.sectionTitle}>Titulo</Text>
+					<View style={styles.inputWrapper}>
+						<TextInput style={styles.input} placeholder='Titulo para el partido' placeholderTextColor={colors.textSecondaryDark} value={titleMatch} onChangeText={setTitleMatch} />
+					</View>
+				</View>
+
 				{/* ── Deporte ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Deporte</Text>
@@ -290,7 +287,7 @@ export default function CreateMatchScreen() {
 								</View>
 								{searchQuery.trim().length > 0 && searchResults.length === 0 && !searching && (
 									<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={addGuestParticipant}>
-										<Ionicons name='add' size={20} color={colors.backgroundDark} />
+										<Ionicons name='add' size={16} color={colors.backgroundDark} />
 									</TouchableOpacity>
 								)}
 							</View>

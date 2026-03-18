@@ -60,7 +60,7 @@ export function MatchProvider({ children }: { children: React.ReactNode }) {
 	}, [matches, filters])
 
 	const clearFilters = useCallback(() => setFilters({}), [])
-	const getMatchById = (id: string) => matches.find((m) => m.id === id)
+	const getMatchById = useCallback((id: string) => matches.find((m) => m.id === id), [matches])
 
 	return <MatchContext.Provider value={{ matches, filteredMatches, isLoading, error, filters, setFilters, clearFilters, refreshMatches: fetchMatches, getMatchById }}>{children}</MatchContext.Provider>
 }
