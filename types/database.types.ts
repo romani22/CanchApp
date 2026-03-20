@@ -82,6 +82,7 @@ export interface Database {
 					venue_name: string
 					venue_address: string | null
 					venue_coordinates: { x: number; y: number } | null
+					venue_zone: string | null
 					total_players: number
 					players_needed: number
 					current_players: number
@@ -103,6 +104,7 @@ export interface Database {
 					venue_name: string
 					venue_address?: string | null
 					venue_coordinates?: { x: number; y: number } | null
+					venue_zone?: string | null
 					total_players: number
 					players_needed: number
 					current_players?: number
@@ -123,6 +125,7 @@ export interface Database {
 					venue_name?: string
 					venue_address?: string | null
 					venue_coordinates?: { x: number; y: number } | null
+					venue_zone?: string | null
 					total_players?: number
 					players_needed?: number
 					current_players?: number

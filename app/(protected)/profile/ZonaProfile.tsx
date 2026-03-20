@@ -10,7 +10,6 @@ type Coords = { x: number; y: number }
 
 type Props = {
 	zone: string | null
-	// Puede llegar como objeto {x,y} o como string Postgres "(x,y)" — manejamos ambos
 	zoneCoordinates: Coords | string | null
 	isEditing: boolean
 	onChangeZone: (zone: string, coordinates: Coords) => void
@@ -18,12 +17,11 @@ type Props = {
 
 /**
  * Supabase devuelve el tipo POINT como string "(longitud,latitud)".
- * Esta función lo convierte a { x, y } para usar en el componente.
+ * Esta función lo normaliza a { x, y }.
  */
 function parseCoords(raw: Coords | string | null): Coords | null {
 	if (!raw) return null
 	if (typeof raw === 'object') return raw
-	// formato postgres: "(x,y)"
 	const match = raw.match(/\(?([-\d.]+),([-\d.]+)\)?/)
 	if (!match) return null
 	return { x: parseFloat(match[1]), y: parseFloat(match[2]) }
@@ -32,6 +30,7 @@ function parseCoords(raw: Coords | string | null): Coords | null {
 function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) {
 	const { detect, loading } = useLocation()
 	const coords = parseCoords(zoneCoordinates)
+	const hasLocation = !!zone
 
 	const handleDetectLocation = async () => {
 		if (!isEditing) return
@@ -43,11 +42,10 @@ function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) 
 		onChangeZone(result.zone, result.coordinates)
 	}
 
-	const hasLocation = !!zone
-
 	return (
 		<View style={styles.section}>
 			<View style={styles.zoneCard}>
+				{/* Header de la tarjeta */}
 				<View style={styles.zoneHeader}>
 					<View style={styles.zoneIconContainer}>
 						<Ionicons name='location' size={24} color={colors.primary} />
@@ -55,7 +53,7 @@ function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) 
 
 					<View style={styles.zoneInfo}>
 						<Text style={styles.zoneTitle}>Zona de juego</Text>
-						<Text style={styles.zoneHint}>{hasLocation ? 'Tu zona actual' : 'No configurada aún'}</Text>
+						<Text style={styles.zoneHint}>{hasLocation ? 'Se usa para mostrarte partidos cercanos' : 'Sin zona configurada aún'}</Text>
 					</View>
 
 					{isEditing && (
@@ -72,26 +70,25 @@ function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) 
 					)}
 				</View>
 
-				{hasLocation && (
-					<View style={styles.zoneBadge}>
-						<Ionicons name='location-outline' size={14} color={colors.primary} />
-						<Text style={styles.zoneBadgeText} numberOfLines={1}>
-							{zone}
-						</Text>
+				{/* Localidad detectada */}
+				{hasLocation ? (
+					<View style={localStyles.zoneResult}>
+						<View style={localStyles.zoneNameRow}>
+							<Ionicons name='location-outline' size={16} color={colors.primary} />
+							<Text style={localStyles.zoneName} numberOfLines={1}>
+								{zone}
+							</Text>
+						</View>
+						{coords && (
+							<View style={localStyles.gpsConfirmed}>
+								<Ionicons name='checkmark-circle' size={14} color={colors.success} />
+								<Text style={localStyles.gpsConfirmedText}>GPS confirmado · radio de búsqueda 20 km</Text>
+							</View>
+						)}
 					</View>
+				) : (
+					!isEditing && <Text style={localStyles.emptyHint}>Activá el modo edición para configurar tu zona y ver partidos cercanos.</Text>
 				)}
-
-				{/* Solo mostrar coordenadas si están disponibles y son válidas */}
-				{coords && (
-					<View style={localStyles.coordsRow}>
-						<Ionicons name='map-outline' size={12} color={colors.textSecondaryDark} />
-						<Text style={localStyles.coordsText}>
-							{coords.y.toFixed(6)}, {coords.x.toFixed(6)}
-						</Text>
-					</View>
-				)}
-
-				{!hasLocation && !isEditing && <Text style={localStyles.emptyHint}>Activá el modo edición para configurar tu zona.</Text>}
 			</View>
 		</View>
 	)
@@ -112,16 +109,30 @@ const localStyles = StyleSheet.create({
 		color: colors.backgroundDark,
 		fontWeight: '700',
 	},
-	coordsRow: {
+	zoneResult: {
+		marginTop: spacing.md,
+		gap: spacing.xs,
+	},
+	zoneNameRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 6,
+	},
+	zoneName: {
+		...typography.body,
+		color: colors.textPrimaryDark,
+		fontWeight: '600',
+		flex: 1,
+	},
+	gpsConfirmed: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		gap: 4,
-		marginTop: spacing.sm,
+		marginLeft: 22,
 	},
-	coordsText: {
+	gpsConfirmedText: {
 		...typography.bodySmall,
 		color: colors.textSecondaryDark,
-		fontFamily: 'monospace',
 	},
 	emptyHint: {
 		...typography.bodySmall,

@@ -1,8 +1,10 @@
 import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
 import Loader from '@/components/ui/Loader'
+import { VenueZoneInput } from '@/components/ui/Venuezoneinput'
 import { buildMatchTitle, levels, sports } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
+import { useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
@@ -31,12 +33,14 @@ export default function EditMatchScreen() {
 	const [saving, setSaving] = useState(false)
 
 	const [sport, setSport] = useState<SportType>('futbol')
-	const [titleMatch, setTitleMatch] = useState('')
 	const [date, setDate] = useState(new Date())
 	const [time, setTime] = useState(new Date())
 	const [showDatePicker, setShowDatePicker] = useState(false)
 	const [showTimePicker, setShowTimePicker] = useState(false)
 	const [venueName, setVenueName] = useState('')
+	const [initialZone, setInitialZone] = useState('')
+	const [initialCoords, setInitialCoords] = useState<{ x: number; y: number } | null>(null)
+	const venueZoneState = useVenueZone(initialZone, initialCoords)
 	const [totalPlayers, setTotalPlayers] = useState(10)
 	const [skillLevel, setSkillLevel] = useState<SkillLevel>('intermedio')
 	const [description, setDescription] = useState('')
@@ -63,8 +67,9 @@ export default function EditMatchScreen() {
 			}
 
 			setSport(data.sport)
-			setTitleMatch(data.title)
 			setVenueName(data.venue_name)
+			setInitialZone(data.venue_zone || '')
+			setInitialCoords((data.venue_coordinates as { x: number; y: number } | null) ?? null)
 			setTotalPlayers(data.total_players)
 			setSkillLevel(data.skill_level)
 			setDescription(data.description || '')
@@ -103,9 +108,11 @@ export default function EditMatchScreen() {
 			setSaving(true)
 			await matchesService.update(id as string, {
 				sport,
-				title: titleMatch === '' ? buildMatchTitle(sport, totalPlayers) : titleMatch,
+				title: buildMatchTitle(sport, totalPlayers),
 				starts_at,
 				venue_name: venueName.trim(),
+				venue_zone: venueZoneState.inputText.trim() || null,
+				venue_coordinates: venueZoneState.coords ?? undefined,
 				total_players: totalPlayers,
 				players_needed: playersNeeded,
 				skill_level: skillLevel,
@@ -179,13 +186,6 @@ export default function EditMatchScreen() {
 			</View>
 
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps='handled'>
-				{/* ── Titulo ── */}
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Titulo</Text>
-					<View style={styles.inputWrapper}>
-						<TextInput style={styles.input} placeholder='Titulo para el partido' placeholderTextColor={colors.textSecondaryDark} value={titleMatch} onChangeText={setTitleMatch} />
-					</View>
-				</View>
 				{/* ── Deporte ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Deporte</Text>
@@ -243,6 +243,9 @@ export default function EditMatchScreen() {
 						<Ionicons name='location' size={20} color={colors.textSecondaryDark} />
 						<TextInput style={styles.input} placeholder='Nombre de la cancha o club' placeholderTextColor={colors.textSecondaryDark} value={venueName} onChangeText={setVenueName} />
 					</View>
+
+					<Text style={[styles.sectionTitle, { marginTop: 16 }]}>Localidad del partido</Text>
+					<VenueZoneInput value={venueZoneState.inputText} coords={venueZoneState.coords} suggestions={venueZoneState.suggestions} searching={venueZoneState.searching} isDirty={venueZoneState.isDirty} onChangeText={venueZoneState.onChangeText} onSelect={venueZoneState.onSelect} onDetectGPS={venueZoneState.onDetectGPS} onDismiss={venueZoneState.onDismiss} />
 				</View>
 
 				{/* ── Jugadores ── */}
