@@ -1,5 +1,6 @@
 import { styles } from '@/assets/styles/Match.styles'
 import ParticipantsMatch from '@/components/match/ParticipantsMatch'
+import { TeamView } from '@/components/match/Teamview'
 import Loader from '@/components/ui/Loader'
 import { levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
@@ -7,12 +8,13 @@ import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
+import { TeamSlot } from '@/types/database.types'
 import { getSportImage } from '@/Utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { format, parseISO } from 'date-fns'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, ImageBackground, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, ImageBackground, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 export default function MatchDetail() {
@@ -23,6 +25,8 @@ export default function MatchDetail() {
 	const [loading, setLoading] = useState(true)
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
+	// Modal para elegir equipo al unirse
+	const [teamPickerVisible, setTeamPickerVisible] = useState(false)
 
 	const loadMatch = useCallback(async () => {
 		try {
@@ -60,11 +64,21 @@ export default function MatchDetail() {
 		}
 	}, [id])
 
-	const handleJoin = async () => {
+	// ── Join ──────────────────────────────────────────────────────────────
+	const handleJoinPress = () => {
 		if (!user || !isOpen || isFull || isParticipant) return
+		if (match.team_mode === 'two_teams') {
+			setTeamPickerVisible(true)
+		} else {
+			doJoin()
+		}
+	}
+
+	const doJoin = async (teamSlot?: TeamSlot) => {
+		setTeamPickerVisible(false)
 		try {
 			setActionLoading(true)
-			const { error } = await matchParticipantsService.join(id as string, user.id)
+			const { error } = await matchParticipantsService.join(id as string, user!.id, teamSlot)
 			if (error) throw error
 			await loadMatch()
 		} catch (err) {
@@ -74,6 +88,7 @@ export default function MatchDetail() {
 		}
 	}
 
+	// ── Leave ─────────────────────────────────────────────────────────────
 	const handleLeave = async () => {
 		if (!user || !isParticipant) return
 		try {
@@ -85,6 +100,16 @@ export default function MatchDetail() {
 			console.error('[MatchDetail] Error saliendo:', err)
 		} finally {
 			setActionLoading(false)
+		}
+	}
+
+	// ── Move player between teams (creator only) ─────────────────────────
+	const handleMovePlayer = async (participantId: string, toSlot: TeamSlot) => {
+		try {
+			await matchParticipantsService.assignTeam(participantId, toSlot)
+			await loadMatch()
+		} catch (err) {
+			console.error('[MatchDetail] Error moviendo jugador:', err)
 		}
 	}
 
@@ -103,17 +128,18 @@ export default function MatchDetail() {
 		)
 	}
 
-	// ── Datos derivados ───────────────────────────────────────────────────
-	// Fuente de verdad: participants array que viene de la query (incluye usuarios y guests reales)
 	const currentPlayers = match.participants?.length ?? 0
 	const playersNeeded = Math.max(0, match.total_players - currentPlayers)
-
 	const isFull = playersNeeded === 0
 	const isOpen = match.status === 'open'
 	const isCreator = match.creator_id === user?.id
 	const isParticipant = match.participants?.some((p: any) => p.user_id === user?.id) ?? false
-
+	const hasTeams = match.team_mode === 'two_teams'
 	const matchDate = parseISO(match.starts_at)
+
+	const perTeam = Math.floor(match.total_players / 2)
+	const teamAFull = match.participants?.filter((p: any) => p.team_slot === 'A').length >= perTeam
+	const teamBFull = match.participants?.filter((p: any) => p.team_slot === 'B').length >= perTeam
 
 	return (
 		<View style={styles.container}>
@@ -136,7 +162,15 @@ export default function MatchDetail() {
 					<Text style={styles.title}>{match.title}</Text>
 					<Text style={styles.subtitle}>{match.venue_name}</Text>
 
-					{/* Stats row */}
+					{/* Modo equipos badge */}
+					{hasTeams && (
+						<View style={localStyles.teamsBadge}>
+							<Ionicons name='people' size={14} color={colors.primary} />
+							<Text style={localStyles.teamsBadgeText}>Partido con equipos</Text>
+						</View>
+					)}
+
+					{/* Stats */}
 					<View style={styles.statsRow}>
 						<View style={styles.statItem}>
 							<Ionicons name='time-outline' size={20} color={colors.primary} />
@@ -144,12 +178,10 @@ export default function MatchDetail() {
 								{format(matchDate, 'dd/MM')} · {format(matchDate, 'HH:mm')}
 							</Text>
 						</View>
-
 						<View style={[styles.statItem, styles.statBorder]}>
 							<Ionicons name='stats-chart' size={20} color={colors.primary} />
 							<Text style={styles.statText}>{levelLabels[match.skill_level as keyof typeof levelLabels] ?? match.skill_level}</Text>
 						</View>
-
 						<View style={styles.statItem}>
 							<Ionicons name='people-outline' size={20} color={colors.primary} />
 							<Text style={styles.statText}>
@@ -160,8 +192,15 @@ export default function MatchDetail() {
 						</View>
 					</View>
 
-					{/* Lista de participantes */}
-					<ParticipantsMatch match={match} />
+					{/* Jugadores / Equipos */}
+					{hasTeams ? (
+						<View style={styles.section}>
+							<Text style={styles.sectionTitle}>Equipos</Text>
+							<TeamView participants={match.participants ?? []} totalPlayers={match.total_players} currentUserId={user?.id} isCreator={isCreator} canManage={isCreator} onMovePlayer={isCreator ? handleMovePlayer : undefined} />
+						</View>
+					) : (
+						<ParticipantsMatch match={match} />
+					)}
 
 					{/* Ubicación */}
 					<View style={styles.mapContainer}>
@@ -191,11 +230,107 @@ export default function MatchDetail() {
 						{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
 					</TouchableOpacity>
 				) : (
-					<TouchableOpacity style={[styles.mainButton, (!isOpen || isFull) && { backgroundColor: '#555' }]} disabled={!isOpen || isFull || actionLoading} onPress={handleJoin}>
-						{actionLoading ? <ActivityIndicator color='white' /> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>Unirme al partido</Text>}
+					<TouchableOpacity style={[styles.mainButton, (!isOpen || isFull) && { backgroundColor: '#555' }]} disabled={!isOpen || isFull || actionLoading} onPress={handleJoinPress}>
+						{actionLoading ? <ActivityIndicator color='white' /> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>{hasTeams ? 'Elegir equipo y unirme' : 'Unirme al partido'}</Text>}
 					</TouchableOpacity>
 				)}
 			</View>
+
+			{/* Team picker modal */}
+			<Modal visible={teamPickerVisible} transparent animationType='fade' onRequestClose={() => setTeamPickerVisible(false)}>
+				<TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 32 }} activeOpacity={1} onPress={() => setTeamPickerVisible(false)}>
+					<View style={localStyles.teamPickerSheet}>
+						<Text style={localStyles.teamPickerTitle}>¿A qué equipo te unís?</Text>
+						<Text style={localStyles.teamPickerSub}>Elegí tu equipo para este partido</Text>
+
+						<TouchableOpacity style={[localStyles.teamPickerBtn, { backgroundColor: `${colors.info}18`, borderColor: `${colors.info}40` }, teamAFull && localStyles.teamPickerBtnDisabled]} onPress={() => !teamAFull && doJoin('A')} disabled={teamAFull || actionLoading}>
+							<View style={[localStyles.teamPickerDot, { backgroundColor: colors.info }]} />
+							<View style={{ flex: 1 }}>
+								<Text style={[localStyles.teamPickerBtnLabel, { color: colors.info }]}>Equipo A</Text>
+								{teamAFull && <Text style={localStyles.teamPickerBtnSub}>Equipo completo</Text>}
+							</View>
+							{!teamAFull && <Ionicons name='chevron-forward' size={20} color={colors.info} />}
+						</TouchableOpacity>
+
+						<TouchableOpacity style={[localStyles.teamPickerBtn, { backgroundColor: '#f59e0b18', borderColor: '#f59e0b40' }, teamBFull && localStyles.teamPickerBtnDisabled]} onPress={() => !teamBFull && doJoin('B')} disabled={teamBFull || actionLoading}>
+							<View style={[localStyles.teamPickerDot, { backgroundColor: '#f59e0b' }]} />
+							<View style={{ flex: 1 }}>
+								<Text style={[localStyles.teamPickerBtnLabel, { color: '#f59e0b' }]}>Equipo B</Text>
+								{teamBFull && <Text style={localStyles.teamPickerBtnSub}>Equipo completo</Text>}
+							</View>
+							{!teamBFull && <Ionicons name='chevron-forward' size={20} color='#f59e0b' />}
+						</TouchableOpacity>
+					</View>
+				</TouchableOpacity>
+			</Modal>
 		</View>
 	)
 }
+
+const localStyles = StyleSheet.create({
+	teamsBadge: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+		alignSelf: 'flex-start',
+		backgroundColor: `${colors.primary}15`,
+		borderRadius: 999,
+		borderWidth: 1,
+		borderColor: `${colors.primary}30`,
+		paddingHorizontal: 10,
+		paddingVertical: 3,
+		marginTop: 6,
+		marginBottom: 4,
+	},
+	teamsBadgeText: {
+		color: colors.primary,
+		fontSize: 12,
+		fontWeight: '600',
+	},
+	teamPickerSheet: {
+		width: '100%',
+		backgroundColor: colors.surfaceDark,
+		borderRadius: 20,
+		padding: 24,
+		gap: 12,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+	},
+	teamPickerTitle: {
+		color: colors.textPrimaryDark,
+		fontSize: 18,
+		fontWeight: '700',
+		textAlign: 'center',
+	},
+	teamPickerSub: {
+		color: colors.textSecondaryDark,
+		fontSize: 13,
+		textAlign: 'center',
+		marginBottom: 4,
+	},
+	teamPickerBtn: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 12,
+		borderWidth: 1,
+		borderRadius: 14,
+		padding: 16,
+	},
+	teamPickerBtnDisabled: {
+		opacity: 0.4,
+	},
+	teamPickerDot: {
+		width: 10,
+		height: 10,
+		borderRadius: 5,
+	},
+	teamPickerBtnLabel: {
+		fontSize: 16,
+		fontWeight: '700',
+	},
+	teamPickerBtnSub: {
+		color: colors.textSecondaryDark,
+		fontSize: 12,
+		marginTop: 2,
+	},
+})

@@ -1,6 +1,8 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type SportType = 'futbol' | 'padel' | 'tenis' | 'basquet' | 'voley'
+export type TeamMode = 'none' | 'two_teams'
+export type TeamSlot = 'A' | 'B'
 export type SkillLevel = 'principiante' | 'intermedio' | 'avanzado'
 export type MatchStatus = 'open' | 'full' | 'completed' | 'cancelled'
 export type RequestStatus = 'pending' | 'accepted' | 'rejected'
@@ -88,6 +90,7 @@ export interface Database {
 					current_players: number
 					skill_level: SkillLevel
 					is_mixed: boolean
+					team_mode: TeamMode
 					status: MatchStatus
 					amenities: string[]
 					created_at: string
@@ -110,6 +113,7 @@ export interface Database {
 					current_players?: number
 					skill_level?: SkillLevel
 					is_mixed?: boolean
+					team_mode?: TeamMode
 					status?: MatchStatus
 					amenities?: string[]
 					created_at?: string
@@ -131,6 +135,7 @@ export interface Database {
 					current_players?: number
 					skill_level?: SkillLevel
 					is_mixed?: boolean
+					team_mode?: TeamMode
 					status?: MatchStatus
 					amenities?: string[]
 					updated_at?: string
@@ -143,6 +148,7 @@ export interface Database {
 					user_id: string
 					joined_at: string
 					is_creator: boolean
+					team_slot: TeamSlot | null
 				}
 				Insert: {
 					id?: string
@@ -150,12 +156,14 @@ export interface Database {
 					user_id: string
 					joined_at?: string
 					is_creator?: boolean
+					team_slot?: TeamSlot | null
 				}
 				Update: {
 					match_id?: string
 					user_id?: string
 					joined_at?: string
 					is_creator?: boolean
+					team_slot?: TeamSlot | null
 				}
 			}
 			join_requests: {

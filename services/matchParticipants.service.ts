@@ -1,12 +1,22 @@
 import { supabase } from '@/lib/supabase'
-import { Guest } from '@/types/database.types'
+import { Guest, TeamSlot } from '@/types/database.types'
 
 export const matchParticipantsService = {
-	async join(matchId: string, userId: string) {
+	async join(matchId: string, userId: string, teamSlot?: TeamSlot) {
 		return await supabase.from('match_participants').insert({
 			match_id: matchId,
 			user_id: userId,
+			...(teamSlot ? { team_slot: teamSlot } : {}),
 		})
+	},
+
+	async assignTeam(participantId: string, teamSlot: TeamSlot | null) {
+		return await supabase.from('match_participants').update({ team_slot: teamSlot }).eq('id', participantId)
+	},
+
+	async assignTeamBulk(matchId: string, assignments: { participantId: string; teamSlot: TeamSlot | null }[]) {
+		// Actualizar todos los team_slot en paralelo
+		return Promise.all(assignments.map(({ participantId, teamSlot }) => supabase.from('match_participants').update({ team_slot: teamSlot }).eq('id', participantId)))
 	},
 
 	async addGuest(matchId: string, guestName: Guest['name']) {

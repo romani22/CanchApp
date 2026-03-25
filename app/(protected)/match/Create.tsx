@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
-import { SkillLevel, SportType } from '@/types/database.types'
+import { SkillLevel, SportType, TeamMode } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { format } from 'date-fns'
@@ -53,6 +53,7 @@ export default function CreateMatchScreen() {
 	const venueZoneState = useVenueZone()
 	const [totalPlayers, setTotalPlayers] = useState(10)
 	const [skillLevel, setSkillLevel] = useState<SkillLevel>('intermedio')
+	const [teamMode, setTeamMode] = useState<TeamMode>('none')
 	const [description, setDescription] = useState('')
 	const [confirmed, setConfirmed] = useState<ConfirmedParticipant[]>([])
 	const [searchQuery, setSearchQuery] = useState('')
@@ -166,6 +167,7 @@ export default function CreateMatchScreen() {
 				players_needed: playersNeeded,
 				skill_level: skillLevel,
 				is_mixed: false,
+				team_mode: teamMode,
 			})
 
 			await matchParticipantsService.join(match.id, user.id)
@@ -384,6 +386,20 @@ export default function CreateMatchScreen() {
 							))}
 						</View>
 					)}
+				</View>
+
+				{/* ── Modo de equipos ── */}
+				<View style={styles.section}>
+					<Text style={styles.sectionTitle}>Modo de equipos</Text>
+					<View style={styles.levelSelector}>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'none' && styles.levelOptionActive]} onPress={() => setTeamMode('none')}>
+							<Text style={[styles.levelText, teamMode === 'none' && styles.levelTextActive]}>Sin equipos</Text>
+						</TouchableOpacity>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'two_teams' && styles.levelOptionActive]} onPress={() => setTeamMode('two_teams')}>
+							<Text style={[styles.levelText, teamMode === 'two_teams' && styles.levelTextActive]}>Equipo A vs B</Text>
+						</TouchableOpacity>
+					</View>
+					<Text style={styles.levelHint}>{teamMode === 'none' ? 'Los jugadores se unen libremente, los equipos se arman después' : 'Cada jugador elige su equipo al unirse · vos podés moverlos'}</Text>
 				</View>
 
 				{/* ── Nivel ── */}

@@ -8,7 +8,7 @@ import { useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
-import { SkillLevel, SportType } from '@/types/database.types'
+import { SkillLevel, SportType, TeamMode } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { format, parseISO } from 'date-fns'
@@ -43,6 +43,7 @@ export default function EditMatchScreen() {
 	const venueZoneState = useVenueZone(initialZone, initialCoords)
 	const [totalPlayers, setTotalPlayers] = useState(10)
 	const [skillLevel, setSkillLevel] = useState<SkillLevel>('intermedio')
+	const [teamMode, setTeamMode] = useState<TeamMode>('none')
 	const [description, setDescription] = useState('')
 	const [participants, setParticipants] = useState<ParticipantRow[]>([])
 	const [newGuestName, setNewGuestName] = useState('')
@@ -72,6 +73,7 @@ export default function EditMatchScreen() {
 			setInitialCoords((data.venue_coordinates as { x: number; y: number } | null) ?? null)
 			setTotalPlayers(data.total_players)
 			setSkillLevel(data.skill_level)
+			setTeamMode((data.team_mode as TeamMode) || 'none')
 			setDescription(data.description || '')
 			const matchDate = parseISO(data.starts_at)
 			setDate(matchDate)
@@ -116,6 +118,7 @@ export default function EditMatchScreen() {
 				total_players: totalPlayers,
 				players_needed: playersNeeded,
 				skill_level: skillLevel,
+				team_mode: teamMode,
 				description: description.trim() || null,
 			})
 			Alert.alert('Guardado', 'El partido fue actualizado.', [{ text: 'Ver partido', onPress: () => router.back() }])
@@ -331,6 +334,20 @@ export default function EditMatchScreen() {
 							)}
 						</View>
 					)}
+				</View>
+
+				{/* ── Modo de equipos ── */}
+				<View style={styles.section}>
+					<Text style={styles.sectionTitle}>Modo de equipos</Text>
+					<View style={styles.levelSelector}>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'none' && styles.levelOptionActive]} onPress={() => setTeamMode('none')}>
+							<Text style={[styles.levelText, teamMode === 'none' && styles.levelTextActive]}>Sin equipos</Text>
+						</TouchableOpacity>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'two_teams' && styles.levelOptionActive]} onPress={() => setTeamMode('two_teams')}>
+							<Text style={[styles.levelText, teamMode === 'two_teams' && styles.levelTextActive]}>Equipo A vs B</Text>
+						</TouchableOpacity>
+					</View>
+					<Text style={styles.levelHint}>{teamMode === 'none' ? 'Los jugadores se unen libremente, los equipos se arman después' : 'Cada jugador elige su equipo al unirse · vos podés moverlos'}</Text>
 				</View>
 
 				{/* ── Nivel ── */}
