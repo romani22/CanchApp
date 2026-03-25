@@ -7,14 +7,14 @@ import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
-import { SkillLevel, SportType, TeamMode } from '@/types/database.types'
+import { SkillLevel, SportType, TeamMode, TeamSlot } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { router } from 'expo-router'
 import { useCallback, useState } from 'react'
-import { ActivityIndicator, Alert, Image, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 const sports: { key: SportType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -31,7 +31,12 @@ const levels: { key: SkillLevel; label: string }[] = [
 	{ key: 'avanzado', label: 'Alto' },
 ]
 
-type ConfirmedParticipant = { type: 'user'; id: string; userId: string; name: string; avatarUrl: string | null } | { type: 'guest'; id: string; name: string }
+const TEAM_CONFIG = {
+	A: { label: 'Equipo A', color: colors.info, bg: `${colors.info}18`, border: `${colors.info}40` },
+	B: { label: 'Equipo B', color: '#f59e0b', bg: '#f59e0b18', border: '#f59e0b40' },
+} as const
+
+type ConfirmedParticipant = { type: 'user'; id: string; userId: string; name: string; avatarUrl: string | null; teamSlot: TeamSlot | null } | { type: 'guest'; id: string; name: string; teamSlot: TeamSlot | null }
 
 type UserSearchResult = {
 	id: string
@@ -60,9 +65,19 @@ export default function CreateMatchScreen() {
 	const [searchResults, setSearchResults] = useState<UserSearchResult[]>([])
 	const [searching, setSearching] = useState(false)
 
-	// players_needed = cuántos faltan conseguir (se calcula automáticamente)
+	// Equipo del creador en modo two_teams
+	const [creatorTeamSlot, setCreatorTeamSlot] = useState<TeamSlot | null>(null)
+
+	// Modal para elegir equipo al agregar jugador en modo two_teams
+	const [pendingUser, setPendingUser] = useState<UserSearchResult | null>(null)
+	const [pendingGuestName, setPendingGuestName] = useState<string | null>(null)
+
 	const playersNeeded = Math.max(0, totalPlayers - 1 - confirmed.length)
 	const slotsAvailable = totalPlayers - 1 - confirmed.length
+
+	const perTeam = Math.floor(totalPlayers / 2)
+	const teamACount = confirmed.filter((p) => p.teamSlot === 'A').length + (creatorTeamSlot === 'A' ? 1 : 0)
+	const teamBCount = confirmed.filter((p) => p.teamSlot === 'B').length + (creatorTeamSlot === 'B' ? 1 : 0)
 
 	// ── Búsqueda de usuarios ─────────────────────────────────────────────
 	const handleSearch = useCallback(
@@ -91,14 +106,31 @@ export default function CreateMatchScreen() {
 		[confirmed, user?.id],
 	)
 
+	// ── Agregar jugadores ──────────────────────────────────────────────
+	const doAddUser = (u: UserSearchResult, slot: TeamSlot | null) => {
+		setConfirmed((prev) => [...prev, { type: 'user', id: Date.now().toString(), userId: u.id, name: u.full_name, avatarUrl: u.avatar_url, teamSlot: slot }])
+		setSearchQuery('')
+		setSearchResults([])
+		setPendingUser(null)
+	}
+
+	const doAddGuest = (name: string, slot: TeamSlot | null) => {
+		setConfirmed((prev) => [...prev, { type: 'guest', id: Date.now().toString(), name, teamSlot: slot }])
+		setSearchQuery('')
+		setSearchResults([])
+		setPendingGuestName(null)
+	}
+
 	const addUserParticipant = (u: UserSearchResult) => {
 		if (slotsAvailable <= 0) {
 			Alert.alert('Sin lugar', 'Ya completaste el total de jugadores.')
 			return
 		}
-		setConfirmed((prev) => [...prev, { type: 'user', id: Date.now().toString(), userId: u.id, name: u.full_name, avatarUrl: u.avatar_url }])
-		setSearchQuery('')
-		setSearchResults([])
+		if (teamMode === 'two_teams') {
+			setPendingUser(u)
+		} else {
+			doAddUser(u, null)
+		}
 	}
 
 	const addGuestParticipant = () => {
@@ -107,19 +139,34 @@ export default function CreateMatchScreen() {
 			Alert.alert('Sin lugar', 'Ya completaste el total de jugadores.')
 			return
 		}
-		setConfirmed((prev) => [...prev, { type: 'guest', id: Date.now().toString(), name: searchQuery.trim() }])
-		setSearchQuery('')
-		setSearchResults([])
+		if (teamMode === 'two_teams') {
+			setPendingGuestName(searchQuery.trim())
+		} else {
+			doAddGuest(searchQuery.trim(), null)
+		}
 	}
 
 	const removeParticipant = (id: string) => setConfirmed((prev) => prev.filter((p) => p.id !== id))
+
+	const moveParticipant = (id: string, toSlot: TeamSlot) => {
+		setConfirmed((prev) => prev.map((p) => (p.id === id ? { ...p, teamSlot: toSlot } : p)))
+	}
+
+	// ── Cambio de modo ──────────────────────────────────────────────────
+	const handleTeamModeChange = (mode: TeamMode) => {
+		if (mode === 'none' && teamMode === 'two_teams') {
+			// Limpiar todos los team_slots
+			setConfirmed((prev) => prev.map((p) => ({ ...p, teamSlot: null })))
+			setCreatorTeamSlot(null)
+		}
+		setTeamMode(mode)
+	}
 
 	// ── Contadores ───────────────────────────────────────────────────────
 	const handleTotalChange = (delta: number) => {
 		const next = totalPlayers + delta
 		if (next < 4 || next > 22) return
 		setTotalPlayers(next)
-		// Quitar confirmados que queden fuera del nuevo total
 		const maxConfirmed = next - 1
 		if (confirmed.length > maxConfirmed) setConfirmed((prev) => prev.slice(0, maxConfirmed))
 	}
@@ -138,8 +185,6 @@ export default function CreateMatchScreen() {
 			Alert.alert('Error', 'Ingresá la localidad del partido')
 			return
 		}
-		// Si escribió texto pero no seleccionó del dropdown, las coords son null.
-		// Advertir al usuario — puede crear igual pero el partido no aparecerá en filtros de zona.
 		if (venueZoneState.isDirty && !venueZoneState.coords) {
 			const shouldContinue = await new Promise<boolean>((resolve) => {
 				Alert.alert('Localidad sin confirmar', 'Seleccioná una opción del listado para que el partido aparezca en búsquedas por zona. ¿Crear sin confirmar la localidad?', [
@@ -170,9 +215,11 @@ export default function CreateMatchScreen() {
 				team_mode: teamMode,
 			})
 
-			await matchParticipantsService.join(match.id, user.id)
+			// Unirse como creador con su equipo asignado (si aplica)
+			await matchParticipantsService.join(match.id, user.id, creatorTeamSlot ?? undefined)
 
-			await Promise.all(confirmed.map((p) => (p.type === 'user' ? matchParticipantsService.join(match.id, (p as any).userId) : matchParticipantsService.addGuest(match.id, p.name))))
+			// Agregar participantes confirmados con su equipo
+			await Promise.all(confirmed.map((p) => (p.type === 'user' ? matchParticipantsService.join(match.id, (p as any).userId, p.teamSlot ?? undefined) : matchParticipantsService.addGuest(match.id, p.name, p.teamSlot ?? undefined))))
 
 			Alert.alert('¡Partido publicado!', 'Ya está visible para otros jugadores.', [{ text: 'Ver partido', onPress: () => router.replace(`/match/${match.id}`) }])
 		} catch (error) {
@@ -181,6 +228,140 @@ export default function CreateMatchScreen() {
 		} finally {
 			setIsLoading(false)
 		}
+	}
+
+	// ── Team picker inline para jugadores pendientes ──────────────────
+	const renderTeamPicker = (name: string, onSelect: (slot: TeamSlot) => void, onCancel: () => void) => (
+		<View style={localStyles.inlineTeamPicker}>
+			<Text style={localStyles.inlineTeamPickerTitle}>¿A qué equipo va {name}?</Text>
+			<View style={localStyles.inlineTeamBtns}>
+				<TouchableOpacity style={[localStyles.inlineTeamBtn, { borderColor: TEAM_CONFIG.A.border, backgroundColor: TEAM_CONFIG.A.bg }, teamACount >= perTeam && localStyles.inlineTeamBtnDisabled]} onPress={() => teamACount < perTeam && onSelect('A')} disabled={teamACount >= perTeam}>
+					<View style={[localStyles.teamDot, { backgroundColor: TEAM_CONFIG.A.color }]} />
+					<Text style={[localStyles.inlineTeamBtnText, { color: TEAM_CONFIG.A.color }]}>Equipo A {teamACount >= perTeam ? '(lleno)' : `(${teamACount}/${perTeam})`}</Text>
+				</TouchableOpacity>
+				<TouchableOpacity style={[localStyles.inlineTeamBtn, { borderColor: TEAM_CONFIG.B.border, backgroundColor: TEAM_CONFIG.B.bg }, teamBCount >= perTeam && localStyles.inlineTeamBtnDisabled]} onPress={() => teamBCount < perTeam && onSelect('B')} disabled={teamBCount >= perTeam}>
+					<View style={[localStyles.teamDot, { backgroundColor: TEAM_CONFIG.B.color }]} />
+					<Text style={[localStyles.inlineTeamBtnText, { color: TEAM_CONFIG.B.color }]}>Equipo B {teamBCount >= perTeam ? '(lleno)' : `(${teamBCount}/${perTeam})`}</Text>
+				</TouchableOpacity>
+			</View>
+			<TouchableOpacity onPress={onCancel} style={localStyles.inlineTeamCancel}>
+				<Text style={{ color: colors.textSecondaryDark, fontSize: 13 }}>Cancelar</Text>
+			</TouchableOpacity>
+		</View>
+	)
+
+	// ── Vista de equipos en modo two_teams ────────────────────────────
+	const renderTeamsPreview = () => {
+		const teamA = confirmed.filter((p) => p.teamSlot === 'A')
+		const teamB = confirmed.filter((p) => p.teamSlot === 'B')
+		const unassigned = confirmed.filter((p) => !p.teamSlot)
+
+		return (
+			<View style={{ gap: 12 }}>
+				{/* Selector de equipo para el creador */}
+				{!creatorTeamSlot ? (
+					<View style={localStyles.creatorTeamSelector}>
+						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+							<View style={[localStyles.miniAvatar, { backgroundColor: colors.primary }]}>
+								<Ionicons name='star' size={10} color={colors.backgroundDark} />
+							</View>
+							<Text style={{ color: colors.textPrimaryDark, fontSize: 13, fontWeight: '600' }}>Vos (creador) — elegí tu equipo:</Text>
+						</View>
+						<View style={{ flexDirection: 'row', gap: 10 }}>
+							<TouchableOpacity style={[localStyles.inlineTeamBtn, { borderColor: TEAM_CONFIG.A.border, backgroundColor: TEAM_CONFIG.A.bg }, teamACount >= perTeam && localStyles.inlineTeamBtnDisabled]} onPress={() => teamACount < perTeam && setCreatorTeamSlot('A')} disabled={teamACount >= perTeam}>
+								<View style={[localStyles.teamDot, { backgroundColor: TEAM_CONFIG.A.color }]} />
+								<Text style={[localStyles.inlineTeamBtnText, { color: TEAM_CONFIG.A.color }]}>Equipo A {teamACount >= perTeam ? '(lleno)' : `(${teamACount}/${perTeam})`}</Text>
+							</TouchableOpacity>
+							<TouchableOpacity style={[localStyles.inlineTeamBtn, { borderColor: TEAM_CONFIG.B.border, backgroundColor: TEAM_CONFIG.B.bg }, teamBCount >= perTeam && localStyles.inlineTeamBtnDisabled]} onPress={() => teamBCount < perTeam && setCreatorTeamSlot('B')} disabled={teamBCount >= perTeam}>
+								<View style={[localStyles.teamDot, { backgroundColor: TEAM_CONFIG.B.color }]} />
+								<Text style={[localStyles.inlineTeamBtnText, { color: TEAM_CONFIG.B.color }]}>Equipo B {teamBCount >= perTeam ? '(lleno)' : `(${teamBCount}/${perTeam})`}</Text>
+							</TouchableOpacity>
+						</View>
+					</View>
+				) : null}
+
+				{/* Columnas A / B */}
+				<View style={{ flexDirection: 'row', gap: 10 }}>
+					{(['A', 'B'] as TeamSlot[]).map((slot) => {
+						const cfg = TEAM_CONFIG[slot]
+						const members = slot === 'A' ? teamA : teamB
+						const creatorInThisTeam = creatorTeamSlot === slot
+						// empties ya descuenta al creador si está en este equipo
+						const empties = Math.max(0, perTeam - members.length - (creatorInThisTeam ? 1 : 0))
+						return (
+							<View key={slot} style={[localStyles.teamPreviewCol, { borderColor: cfg.border, backgroundColor: cfg.bg }]}>
+								<View style={localStyles.teamPreviewHeader}>
+									<View style={[localStyles.teamDot, { backgroundColor: cfg.color }]} />
+									<Text style={[localStyles.teamPreviewTitle, { color: cfg.color }]}>{cfg.label}</Text>
+									<Text style={[localStyles.teamPreviewCount, { color: cfg.color }]}>
+										{members.length + (creatorInThisTeam ? 1 : 0)}/{perTeam}
+									</Text>
+								</View>
+
+								{/* Fila del creador si está en este equipo */}
+								{creatorInThisTeam && (
+									<View style={localStyles.teamPreviewRow}>
+										<View style={[localStyles.miniAvatar, { backgroundColor: colors.primary }]}>
+											<Ionicons name='star' size={9} color={colors.backgroundDark} />
+										</View>
+										<Text style={[localStyles.teamPreviewName, { flex: 1 }]} numberOfLines={1}>
+											Vos
+										</Text>
+										<TouchableOpacity onPress={() => setCreatorTeamSlot(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={[localStyles.swapBtn, { borderColor: TEAM_CONFIG[slot === 'A' ? 'B' : 'A'].border }]}>
+											<Ionicons name='swap-horizontal' size={11} color={TEAM_CONFIG[slot === 'A' ? 'B' : 'A'].color} />
+										</TouchableOpacity>
+									</View>
+								)}
+
+								{members.map((p) => (
+									<View key={p.id} style={localStyles.teamPreviewRow}>
+										<View style={[localStyles.miniAvatar, { backgroundColor: p.type === 'user' ? `${colors.info}30` : colors.surfaceDark }]}>{p.type === 'user' && (p as any).avatarUrl ? <Image source={{ uri: (p as any).avatarUrl }} style={localStyles.miniAvatarImg} /> : <Text style={{ color: 'white', fontSize: 9, fontWeight: '700' }}>{p.name.charAt(0).toUpperCase()}</Text>}</View>
+										<Text style={localStyles.teamPreviewName} numberOfLines={1}>
+											{p.name}
+										</Text>
+										<TouchableOpacity onPress={() => moveParticipant(p.id, slot === 'A' ? 'B' : 'A')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={[localStyles.swapBtn, { borderColor: TEAM_CONFIG[slot === 'A' ? 'B' : 'A'].border }]}>
+											<Ionicons name='swap-horizontal' size={11} color={TEAM_CONFIG[slot === 'A' ? 'B' : 'A'].color} />
+										</TouchableOpacity>
+										<TouchableOpacity onPress={() => removeParticipant(p.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+											<Ionicons name='close-circle' size={16} color={colors.error} />
+										</TouchableOpacity>
+									</View>
+								))}
+								{Array.from({ length: empties }, (_, i) => (
+									<View key={`e-${i}`} style={localStyles.emptySlotRow}>
+										<Ionicons name='person-add-outline' size={12} color={cfg.color} style={{ opacity: 0.4 }} />
+										<Text style={[localStyles.emptySlotText, { color: cfg.color }]}>Lugar libre</Text>
+									</View>
+								))}
+							</View>
+						)
+					})}
+				</View>
+
+				{/* Sin equipo */}
+				{unassigned.length > 0 && (
+					<View style={localStyles.unassignedBox}>
+						<Text style={localStyles.unassignedTitle}>Sin equipo asignado</Text>
+						{unassigned.map((p) => (
+							<View key={p.id} style={localStyles.unassignedRow}>
+								<Text style={localStyles.unassignedName}>{p.name}</Text>
+								<View style={{ flexDirection: 'row', gap: 6 }}>
+									<TouchableOpacity style={[localStyles.assignBtn, { borderColor: TEAM_CONFIG.A.border }]} onPress={() => moveParticipant(p.id, 'A')}>
+										<Text style={{ color: TEAM_CONFIG.A.color, fontSize: 11, fontWeight: '700' }}>A</Text>
+									</TouchableOpacity>
+									<TouchableOpacity style={[localStyles.assignBtn, { borderColor: TEAM_CONFIG.B.border }]} onPress={() => moveParticipant(p.id, 'B')}>
+										<Text style={{ color: TEAM_CONFIG.B.color, fontSize: 11, fontWeight: '700' }}>B</Text>
+									</TouchableOpacity>
+									<TouchableOpacity onPress={() => removeParticipant(p.id)}>
+										<Ionicons name='close-circle' size={18} color={colors.error} />
+									</TouchableOpacity>
+								</View>
+							</View>
+						))}
+					</View>
+				)}
+			</View>
+		)
 	}
 
 	return (
@@ -277,7 +458,6 @@ export default function CreateMatchScreen() {
 						</View>
 					</View>
 
-					{/* Resumen automático */}
 					<View style={styles.summaryRow}>
 						<View style={styles.summaryItem}>
 							<Text style={styles.summaryNum}>{1 + confirmed.length}</Text>
@@ -296,6 +476,20 @@ export default function CreateMatchScreen() {
 					</View>
 				</View>
 
+				{/* ── Modo de equipos ── */}
+				<View style={styles.section}>
+					<Text style={styles.sectionTitle}>Modo de equipos</Text>
+					<View style={styles.levelSelector}>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'none' && styles.levelOptionActive]} onPress={() => handleTeamModeChange('none')}>
+							<Text style={[styles.levelText, teamMode === 'none' && styles.levelTextActive]}>Sin equipos</Text>
+						</TouchableOpacity>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'two_teams' && styles.levelOptionActive]} onPress={() => handleTeamModeChange('two_teams')}>
+							<Text style={[styles.levelText, teamMode === 'two_teams' && styles.levelTextActive]}>Equipo A vs B</Text>
+						</TouchableOpacity>
+					</View>
+					<Text style={styles.levelHint}>{teamMode === 'none' ? 'Los jugadores se unen libremente, los equipos se arman después' : 'Cada jugador elige su equipo al unirse · vos podés moverlos'}</Text>
+				</View>
+
 				{/* ── Participantes confirmados ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>
@@ -305,7 +499,24 @@ export default function CreateMatchScreen() {
 						</Text>
 					</Text>
 
-					{slotsAvailable > 0 && (
+					{/* Selector de equipo inline — usuario pendiente */}
+					{pendingUser &&
+						renderTeamPicker(
+							pendingUser.full_name,
+							(slot) => doAddUser(pendingUser, slot),
+							() => setPendingUser(null),
+						)}
+
+					{/* Selector de equipo inline — invitado pendiente */}
+					{pendingGuestName &&
+						renderTeamPicker(
+							pendingGuestName,
+							(slot) => doAddGuest(pendingGuestName, slot),
+							() => setPendingGuestName(null),
+						)}
+
+					{/* Input de búsqueda — solo si no hay pending */}
+					{!pendingUser && !pendingGuestName && slotsAvailable > 0 && (
 						<>
 							<View style={styles.guestInputRow}>
 								<View style={[styles.inputWrapper, { flex: 1 }]}>
@@ -320,7 +531,6 @@ export default function CreateMatchScreen() {
 								)}
 							</View>
 
-							{/* Resultados de búsqueda */}
 							{searchResults.length > 0 && (
 								<View style={styles.searchResults}>
 									{searchResults.map((u) => (
@@ -344,62 +554,43 @@ export default function CreateMatchScreen() {
 						</>
 					)}
 
-					{/* Lista de confirmados */}
-					{confirmed.length > 0 && (
+					{/* Lista / vista de equipos */}
+					{(confirmed.length > 0 || teamMode === 'two_teams') && (
 						<View style={styles.guestListContainer}>
-							{/* Creador siempre primero */}
-							<View style={styles.confirmedRow}>
-								<View style={[styles.confirmedAvatar, { backgroundColor: colors.primary }]}>
-									<Ionicons name='star' size={13} color={colors.backgroundDark} />
-								</View>
-								<View style={{ flex: 1 }}>
-									<Text style={styles.confirmedName}>Vos (creador)</Text>
-								</View>
-							</View>
-
-							{confirmed.map((p) => (
-								<View key={p.id} style={styles.guestRow}>
-									{p.type === 'user' && (p as any).avatarUrl ? (
-										<Image source={{ uri: (p as any).avatarUrl }} style={styles.confirmedAvatar} />
-									) : (
-										<View
-											style={[
-												styles.confirmedAvatar,
-												{
-													backgroundColor: p.type === 'user' ? `${colors.info}30` : colors.surfaceDark,
-													borderWidth: 1,
-													borderColor: p.type === 'user' ? colors.info : colors.borderDark,
-												},
-											]}
-										>
-											<Ionicons name={p.type === 'user' ? 'person' : 'person-outline'} size={13} color={p.type === 'user' ? colors.info : colors.textSecondaryDark} />
-										</View>
-									)}
-									<View style={{ flex: 1 }}>
-										<Text style={styles.confirmedName}>{p.name}</Text>
-										<Text style={styles.confirmedSub}>{p.type === 'user' ? 'Usuario registrado' : 'Invitado'}</Text>
+							{/* Creador — solo visible en modo sin equipos */}
+							{teamMode !== 'two_teams' && (
+								<View style={styles.confirmedRow}>
+									<View style={[styles.confirmedAvatar, { backgroundColor: colors.primary }]}>
+										<Ionicons name='star' size={13} color={colors.backgroundDark} />
 									</View>
-									<TouchableOpacity onPress={() => removeParticipant(p.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-										<Ionicons name='close-circle' size={20} color={colors.error} />
-									</TouchableOpacity>
+									<View style={{ flex: 1 }}>
+										<Text style={styles.confirmedName}>Vos (creador)</Text>
+									</View>
 								</View>
-							))}
+							)}
+
+							{teamMode === 'two_teams'
+								? renderTeamsPreview()
+								: confirmed.map((p) => (
+										<View key={p.id} style={styles.guestRow}>
+											{p.type === 'user' && (p as any).avatarUrl ? (
+												<Image source={{ uri: (p as any).avatarUrl }} style={styles.confirmedAvatar} />
+											) : (
+												<View style={[styles.confirmedAvatar, { backgroundColor: p.type === 'user' ? `${colors.info}30` : colors.surfaceDark, borderWidth: 1, borderColor: p.type === 'user' ? colors.info : colors.borderDark }]}>
+													<Ionicons name={p.type === 'user' ? 'person' : 'person-outline'} size={13} color={p.type === 'user' ? colors.info : colors.textSecondaryDark} />
+												</View>
+											)}
+											<View style={{ flex: 1 }}>
+												<Text style={styles.confirmedName}>{p.name}</Text>
+												<Text style={styles.confirmedSub}>{p.type === 'user' ? 'Usuario registrado' : 'Invitado'}</Text>
+											</View>
+											<TouchableOpacity onPress={() => removeParticipant(p.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+												<Ionicons name='close-circle' size={20} color={colors.error} />
+											</TouchableOpacity>
+										</View>
+									))}
 						</View>
 					)}
-				</View>
-
-				{/* ── Modo de equipos ── */}
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Modo de equipos</Text>
-					<View style={styles.levelSelector}>
-						<TouchableOpacity style={[styles.levelOption, teamMode === 'none' && styles.levelOptionActive]} onPress={() => setTeamMode('none')}>
-							<Text style={[styles.levelText, teamMode === 'none' && styles.levelTextActive]}>Sin equipos</Text>
-						</TouchableOpacity>
-						<TouchableOpacity style={[styles.levelOption, teamMode === 'two_teams' && styles.levelOptionActive]} onPress={() => setTeamMode('two_teams')}>
-							<Text style={[styles.levelText, teamMode === 'two_teams' && styles.levelTextActive]}>Equipo A vs B</Text>
-						</TouchableOpacity>
-					</View>
-					<Text style={styles.levelHint}>{teamMode === 'none' ? 'Los jugadores se unen libremente, los equipos se arman después' : 'Cada jugador elige su equipo al unirse · vos podés moverlos'}</Text>
 				</View>
 
 				{/* ── Nivel ── */}
@@ -442,3 +633,151 @@ export default function CreateMatchScreen() {
 		</SafeAreaView>
 	)
 }
+
+const localStyles = StyleSheet.create({
+	creatorTeamSelector: {
+		backgroundColor: `${colors.primary}12`,
+		borderRadius: 12,
+		borderWidth: 1,
+		borderColor: `${colors.primary}30`,
+		padding: 12,
+	},
+	inlineTeamPicker: {
+		backgroundColor: colors.surfaceDark,
+		borderRadius: 14,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+		padding: 16,
+		marginBottom: 12,
+		gap: 10,
+	},
+	inlineTeamPickerTitle: {
+		color: colors.textPrimaryDark,
+		fontSize: 14,
+		fontWeight: '600',
+		textAlign: 'center',
+	},
+	inlineTeamBtns: {
+		flexDirection: 'row',
+		gap: 10,
+	},
+	inlineTeamBtn: {
+		flex: 1,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 6,
+		borderWidth: 1,
+		borderRadius: 10,
+		paddingVertical: 12,
+	},
+	inlineTeamBtnDisabled: {
+		opacity: 0.4,
+	},
+	inlineTeamBtnText: {
+		fontSize: 13,
+		fontWeight: '700',
+	},
+	inlineTeamCancel: {
+		alignItems: 'center',
+		paddingVertical: 4,
+	},
+	teamDot: {
+		width: 8,
+		height: 8,
+		borderRadius: 4,
+	},
+	teamPreviewCol: {
+		flex: 1,
+		borderRadius: 12,
+		borderWidth: 1,
+		padding: 10,
+		gap: 4,
+	},
+	teamPreviewHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+		marginBottom: 6,
+	},
+	teamPreviewTitle: {
+		fontSize: 12,
+		fontWeight: '700',
+		flex: 1,
+	},
+	teamPreviewCount: {
+		fontSize: 11,
+		fontWeight: '600',
+	},
+	teamPreviewRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+		paddingVertical: 3,
+	},
+	teamPreviewName: {
+		flex: 1,
+		color: colors.textPrimaryDark,
+		fontSize: 12,
+		fontWeight: '500',
+	},
+	miniAvatar: {
+		width: 22,
+		height: 22,
+		borderRadius: 11,
+		alignItems: 'center',
+		justifyContent: 'center',
+		flexShrink: 0,
+	},
+	miniAvatarImg: {
+		width: 22,
+		height: 22,
+		borderRadius: 11,
+	},
+	swapBtn: {
+		borderWidth: 1,
+		borderRadius: 99,
+		padding: 3,
+	},
+	emptySlotRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+		paddingVertical: 3,
+		opacity: 0.5,
+	},
+	emptySlotText: {
+		fontSize: 11,
+	},
+	unassignedBox: {
+		backgroundColor: colors.surfaceDark,
+		borderRadius: 10,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+		padding: 10,
+		gap: 6,
+	},
+	unassignedTitle: {
+		color: colors.textSecondaryDark,
+		fontSize: 11,
+		fontWeight: '600',
+		marginBottom: 2,
+	},
+	unassignedRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 6,
+	},
+	unassignedName: {
+		flex: 1,
+		color: colors.textPrimaryDark,
+		fontSize: 13,
+		fontWeight: '500',
+	},
+	assignBtn: {
+		borderWidth: 1,
+		borderRadius: 6,
+		paddingHorizontal: 8,
+		paddingVertical: 3,
+	},
+})

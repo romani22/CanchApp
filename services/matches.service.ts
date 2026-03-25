@@ -33,6 +33,7 @@ const PARTICIPANTS_SELECT = `
 	user_id,
 	guest_name,
 	joined_at,
+	team_slot,
 	user:profiles(
 		id,
 		full_name,

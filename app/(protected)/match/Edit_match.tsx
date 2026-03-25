@@ -8,7 +8,7 @@ import { useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
-import { SkillLevel, SportType, TeamMode } from '@/types/database.types'
+import { SkillLevel, SportType, TeamMode, TeamSlot } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { format, parseISO } from 'date-fns'
@@ -18,10 +18,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+const TEAM_CONFIG = {
+	A: { label: 'Equipo A', color: colors.info, bg: `${colors.info}18`, border: `${colors.info}40` },
+	B: { label: 'Equipo B', color: '#f59e0b', bg: '#f59e0b18', border: '#f59e0b40' },
+} as const
+
 type ParticipantRow = {
 	id: string
 	user_id: string | null
 	guest_name: string | null
+	team_slot: TeamSlot | null
 	user: { id: string; full_name: string; avatar_url: string | null } | null
 }
 
@@ -47,10 +53,11 @@ export default function EditMatchScreen() {
 	const [description, setDescription] = useState('')
 	const [participants, setParticipants] = useState<ParticipantRow[]>([])
 	const [newGuestName, setNewGuestName] = useState('')
+	const [movingId, setMovingId] = useState<string | null>(null)
 
-	// Calculado igual que en Create — siempre derivado, nunca guardado aparte
 	const playersNeeded = Math.max(0, totalPlayers - participants.length)
 	const slotsAvailable = totalPlayers - participants.length
+	const perTeam = Math.floor(totalPlayers / 2)
 
 	const loadMatch = useCallback(async () => {
 		try {
@@ -93,11 +100,67 @@ export default function EditMatchScreen() {
 
 	const handleTotalChange = (delta: number) => {
 		const next = totalPlayers + delta
-		// No puede ser menor que los participantes actuales ni mayor de 22
 		if (next < participants.length || next < 4 || next > 22) return
 		setTotalPlayers(next)
 	}
 
+	// ── Cambio de modo de equipos ────────────────────────────────────
+	const handleTeamModeChange = async (mode: TeamMode) => {
+		if (mode === teamMode) return
+
+		if (mode === 'none' && teamMode === 'two_teams') {
+			Alert.alert('Quitar equipos', 'Todos los jugadores perderán su equipo asignado. ¿Continuar?', [
+				{ text: 'Cancelar', style: 'cancel' },
+				{
+					text: 'Continuar',
+					onPress: async () => {
+						try {
+							await matchParticipantsService.clearAllTeamSlots(id as string)
+							setParticipants((prev) => prev.map((p) => ({ ...p, team_slot: null })))
+							setTeamMode('none')
+						} catch (err) {
+							console.error('[EditMatch] Error limpiando slots:', err)
+							Alert.alert('Error', 'No se pudo limpiar los equipos.')
+						}
+					},
+				},
+			])
+		} else {
+			setTeamMode(mode)
+		}
+	}
+
+	// ── Mover jugador entre equipos ──────────────────────────────────
+	const handleMoveParticipant = async (participant: ParticipantRow, toSlot: TeamSlot) => {
+		setMovingId(participant.id)
+		try {
+			const { error } = await matchParticipantsService.assignTeam(participant.id, toSlot)
+			if (error) throw error
+			setParticipants((prev) => prev.map((p) => (p.id === participant.id ? { ...p, team_slot: toSlot } : p)))
+		} catch (err) {
+			console.error('[EditMatch] Error moviendo jugador:', err)
+			Alert.alert('Error', 'No se pudo mover el jugador.')
+		} finally {
+			setMovingId(null)
+		}
+	}
+
+	// ── Asignar equipo (unassigned) ──────────────────────────────────
+	const handleAssignTeam = async (participant: ParticipantRow, slot: TeamSlot) => {
+		setMovingId(participant.id)
+		try {
+			const { error } = await matchParticipantsService.assignTeam(participant.id, slot)
+			if (error) throw error
+			setParticipants((prev) => prev.map((p) => (p.id === participant.id ? { ...p, team_slot: slot } : p)))
+		} catch (err) {
+			console.error('[EditMatch] Error asignando equipo:', err)
+			Alert.alert('Error', 'No se pudo asignar el equipo.')
+		} finally {
+			setMovingId(null)
+		}
+	}
+
+	// ── Guardar ──────────────────────────────────────────────────────
 	const handleSave = async () => {
 		if (!venueName.trim()) {
 			Alert.alert('Error', 'Ingresá el nombre de la cancha o club')
@@ -130,9 +193,10 @@ export default function EditMatchScreen() {
 		}
 	}
 
+	// ── Quitar participante ──────────────────────────────────────────
 	const handleRemoveParticipant = (participant: ParticipantRow) => {
 		const isCreatorParticipant = participant.user_id === user?.id
-		if (isCreatorParticipant) return // no se puede quitar al creador
+		if (isCreatorParticipant) return
 
 		const name = participant.user?.full_name ?? participant.guest_name ?? 'este jugador'
 
@@ -158,24 +222,39 @@ export default function EditMatchScreen() {
 		])
 	}
 
-	const handleAddGuest = async () => {
+	// ── Agregar invitado ─────────────────────────────────────────────
+	const handleAddGuest = async (teamSlot?: TeamSlot) => {
 		if (!newGuestName.trim()) return
 		if (slotsAvailable <= 0) {
 			Alert.alert('Sin lugar', 'Ya completaste el total de jugadores.')
 			return
 		}
+
+		// En modo equipos, si no se pasó slot, preguntar
+		if (teamMode === 'two_teams' && !teamSlot) {
+			setPendingGuestAdd(newGuestName.trim())
+			return
+		}
+
 		try {
-			const { error } = await matchParticipantsService.addGuest(id as string, newGuestName.trim())
+			const { error } = await matchParticipantsService.addGuest(id as string, newGuestName.trim(), teamSlot)
 			if (error) throw error
-			setParticipants((prev) => [...prev, { id: `temp-${Date.now()}`, user_id: null, guest_name: newGuestName.trim(), user: null }])
+			setParticipants((prev) => [...prev, { id: `temp-${Date.now()}`, user_id: null, guest_name: newGuestName.trim(), team_slot: teamSlot ?? null, user: null }])
 			setNewGuestName('')
+			setPendingGuestAdd(null)
 		} catch (err) {
 			console.error('[EditMatch] Error agregando invitado:', err)
 			Alert.alert('Error', 'No se pudo agregar el jugador.')
 		}
 	}
 
+	const [pendingGuestAdd, setPendingGuestAdd] = useState<string | null>(null)
+
 	if (loadingMatch) return <Loader title='Cargando partido...' />
+
+	const teamA = participants.filter((p) => p.team_slot === 'A')
+	const teamB = participants.filter((p) => p.team_slot === 'B')
+	const unassigned = participants.filter((p) => !p.team_slot)
 
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
@@ -271,7 +350,6 @@ export default function EditMatchScreen() {
 						</View>
 					</View>
 
-					{/* Resumen — igual que en Create */}
 					<View style={styles.summaryRow}>
 						<View style={styles.summaryItem}>
 							<Text style={styles.summaryNum}>{participants.length}</Text>
@@ -290,6 +368,20 @@ export default function EditMatchScreen() {
 					</View>
 				</View>
 
+				{/* ── Modo de equipos ── */}
+				<View style={styles.section}>
+					<Text style={styles.sectionTitle}>Modo de equipos</Text>
+					<View style={styles.levelSelector}>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'none' && styles.levelOptionActive]} onPress={() => handleTeamModeChange('none')}>
+							<Text style={[styles.levelText, teamMode === 'none' && styles.levelTextActive]}>Sin equipos</Text>
+						</TouchableOpacity>
+						<TouchableOpacity style={[styles.levelOption, teamMode === 'two_teams' && styles.levelOptionActive]} onPress={() => handleTeamModeChange('two_teams')}>
+							<Text style={[styles.levelText, teamMode === 'two_teams' && styles.levelTextActive]}>Equipo A vs B</Text>
+						</TouchableOpacity>
+					</View>
+					<Text style={styles.levelHint}>{teamMode === 'none' ? 'Los jugadores se unen libremente, los equipos se arman después' : 'Cada jugador elige su equipo al unirse · vos podés moverlos'}</Text>
+				</View>
+
 				{/* ── Participantes actuales ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>
@@ -299,55 +391,159 @@ export default function EditMatchScreen() {
 						</Text>
 					</Text>
 
-					{participants.map((p) => {
-						const isCreatorRow = p.user_id === user?.id
-						const name = p.user?.full_name ?? p.guest_name ?? 'Sin nombre'
-						const isGuest = !p.user_id
+					{/* Vista de equipos (modo two_teams) */}
+					{teamMode === 'two_teams' ? (
+						<>
+							{/* Columnas A/B */}
+							<View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+								{(['A', 'B'] as TeamSlot[]).map((slot) => {
+									const cfg = TEAM_CONFIG[slot]
+									const members = slot === 'A' ? teamA : teamB
+									const empties = Math.max(0, perTeam - members.length)
+									return (
+										<View key={slot} style={[localStyles.teamCol, { borderColor: cfg.border, backgroundColor: cfg.bg }]}>
+											<View style={localStyles.teamHeader}>
+												<View style={[localStyles.teamDot, { backgroundColor: cfg.color }]} />
+												<Text style={[localStyles.teamTitle, { color: cfg.color }]}>{cfg.label}</Text>
+												<Text style={[localStyles.teamCount, { color: cfg.color }]}>
+													{members.length}/{perTeam}
+												</Text>
+											</View>
+											{members.map((p) => {
+												const isCreatorRow = p.user_id === user?.id
+												const name = p.user?.full_name ?? p.guest_name ?? 'Sin nombre'
+												const otherSlot: TeamSlot = slot === 'A' ? 'B' : 'A'
+												return (
+													<View key={p.id} style={localStyles.playerRow}>
+														{p.user?.avatar_url ? <Image source={{ uri: p.user.avatar_url }} style={localStyles.avatar} /> : <View style={[localStyles.avatar, { backgroundColor: isCreatorRow ? colors.primary : `${colors.info}30` }]}>{isCreatorRow ? <Ionicons name='star' size={10} color={colors.backgroundDark} /> : <Text style={localStyles.avatarInitial}>{name.charAt(0).toUpperCase()}</Text>}</View>}
+														<Text style={localStyles.playerName} numberOfLines={1}>
+															{name}
+														</Text>
+														{movingId === p.id ? (
+															<ActivityIndicator size='small' color={cfg.color} />
+														) : (
+															<View style={{ flexDirection: 'row', gap: 5 }}>
+																{!isCreatorRow && (
+																	<TouchableOpacity style={[localStyles.moveBtn, { borderColor: TEAM_CONFIG[otherSlot].border }]} onPress={() => handleMoveParticipant(p, otherSlot)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+																		<Ionicons name='swap-horizontal' size={11} color={TEAM_CONFIG[otherSlot].color} />
+																		<Text style={[localStyles.moveBtnText, { color: TEAM_CONFIG[otherSlot].color }]}>{otherSlot}</Text>
+																	</TouchableOpacity>
+																)}
+																{!isCreatorRow && (
+																	<TouchableOpacity onPress={() => handleRemoveParticipant(p)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+																		<Ionicons name='close-circle' size={16} color={colors.error} />
+																	</TouchableOpacity>
+																)}
+															</View>
+														)}
+													</View>
+												)
+											})}
+											{Array.from({ length: empties }, (_, i) => (
+												<View key={`e-${i}`} style={localStyles.emptySlotRow}>
+													<Ionicons name='person-add-outline' size={12} color={cfg.color} style={{ opacity: 0.4 }} />
+													<Text style={[localStyles.emptySlotText, { color: cfg.color }]}>Lugar libre</Text>
+												</View>
+											))}
+										</View>
+									)
+								})}
+							</View>
 
-						return (
-							<View key={p.id} style={localStyles.participantRow}>
-								{p.user?.avatar_url ? <Image source={{ uri: p.user.avatar_url }} style={localStyles.participantAvatar} /> : <View style={[localStyles.participantAvatar, { backgroundColor: isCreatorRow ? colors.primary : isGuest ? colors.surfaceDark : `${colors.info}30`, borderWidth: 1, borderColor: isCreatorRow ? colors.primary : isGuest ? colors.borderDark : colors.info }]}>{isCreatorRow ? <Ionicons name='star' size={14} color={colors.backgroundDark} /> : <Text style={[localStyles.participantInitial, { color: isGuest ? colors.textSecondaryDark : colors.info }]}>{name.charAt(0).toUpperCase()}</Text>}</View>}
-								<View style={localStyles.participantInfo}>
-									<Text style={localStyles.participantName}>{isCreatorRow ? `${name} (vos)` : name}</Text>
-									<Text style={localStyles.participantBadge}>{isCreatorRow ? 'Creador' : isGuest ? 'Invitado' : 'Registrado'}</Text>
+							{/* Sin equipo asignado */}
+							{unassigned.length > 0 && (
+								<View style={localStyles.unassignedBox}>
+									<Text style={localStyles.unassignedTitle}>Sin equipo asignado — asignalos:</Text>
+									{unassigned.map((p) => {
+										const isCreatorRow = p.user_id === user?.id
+										const name = p.user?.full_name ?? p.guest_name ?? 'Sin nombre'
+										return (
+											<View key={p.id} style={localStyles.unassignedRow}>
+												<View style={[localStyles.avatar, { backgroundColor: isCreatorRow ? colors.primary : colors.surfaceDark }]}>{isCreatorRow ? <Ionicons name='star' size={10} color={colors.backgroundDark} /> : <Text style={localStyles.avatarInitial}>{name.charAt(0).toUpperCase()}</Text>}</View>
+												<Text style={localStyles.unassignedName}>{name}</Text>
+												{movingId === p.id ? (
+													<ActivityIndicator size='small' color={colors.primary} />
+												) : (
+													<View style={{ flexDirection: 'row', gap: 6 }}>
+														<TouchableOpacity style={[localStyles.assignBtn, { borderColor: TEAM_CONFIG.A.border }]} onPress={() => handleAssignTeam(p, 'A')} disabled={teamA.length >= perTeam}>
+															<Text style={{ color: teamA.length >= perTeam ? colors.textSecondaryDark : TEAM_CONFIG.A.color, fontSize: 11, fontWeight: '700' }}>A</Text>
+														</TouchableOpacity>
+														<TouchableOpacity style={[localStyles.assignBtn, { borderColor: TEAM_CONFIG.B.border }]} onPress={() => handleAssignTeam(p, 'B')} disabled={teamB.length >= perTeam}>
+															<Text style={{ color: teamB.length >= perTeam ? colors.textSecondaryDark : TEAM_CONFIG.B.color, fontSize: 11, fontWeight: '700' }}>B</Text>
+														</TouchableOpacity>
+														{!isCreatorRow && (
+															<TouchableOpacity onPress={() => handleRemoveParticipant(p)}>
+																<Ionicons name='close-circle' size={18} color={colors.error} />
+															</TouchableOpacity>
+														)}
+													</View>
+												)}
+											</View>
+										)
+									})}
 								</View>
-								{!isCreatorRow && (
-									<TouchableOpacity onPress={() => handleRemoveParticipant(p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-										<Ionicons name='close-circle' size={22} color={colors.error} />
-									</TouchableOpacity>
-								)}
-							</View>
-						)
-					})}
-
-					{/* Agregar invitado — igual visual que Create */}
-					{slotsAvailable > 0 && (
-						<View style={[styles.guestInputRow, { marginTop: 12 }]}>
-							<View style={[styles.inputWrapper, { flex: 1 }]}>
-								<Ionicons name='person-add-outline' size={18} color={colors.textSecondaryDark} />
-								<TextInput style={styles.input} placeholder='Agregar invitado por nombre' placeholderTextColor={colors.textSecondaryDark} value={newGuestName} onChangeText={setNewGuestName} onSubmitEditing={handleAddGuest} returnKeyType='done' />
-							</View>
-							{newGuestName.trim().length > 0 && (
-								<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={handleAddGuest}>
-									<Ionicons name='add' size={20} color={colors.backgroundDark} />
-								</TouchableOpacity>
 							)}
-						</View>
-					)}
-				</View>
+						</>
+					) : (
+						/* Vista normal — lista plana */
+						participants.map((p) => {
+							const isCreatorRow = p.user_id === user?.id
+							const name = p.user?.full_name ?? p.guest_name ?? 'Sin nombre'
+							const isGuest = !p.user_id
 
-				{/* ── Modo de equipos ── */}
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Modo de equipos</Text>
-					<View style={styles.levelSelector}>
-						<TouchableOpacity style={[styles.levelOption, teamMode === 'none' && styles.levelOptionActive]} onPress={() => setTeamMode('none')}>
-							<Text style={[styles.levelText, teamMode === 'none' && styles.levelTextActive]}>Sin equipos</Text>
-						</TouchableOpacity>
-						<TouchableOpacity style={[styles.levelOption, teamMode === 'two_teams' && styles.levelOptionActive]} onPress={() => setTeamMode('two_teams')}>
-							<Text style={[styles.levelText, teamMode === 'two_teams' && styles.levelTextActive]}>Equipo A vs B</Text>
-						</TouchableOpacity>
-					</View>
-					<Text style={styles.levelHint}>{teamMode === 'none' ? 'Los jugadores se unen libremente, los equipos se arman después' : 'Cada jugador elige su equipo al unirse · vos podés moverlos'}</Text>
+							return (
+								<View key={p.id} style={localStyles.participantRow}>
+									{p.user?.avatar_url ? <Image source={{ uri: p.user.avatar_url }} style={localStyles.participantAvatar} /> : <View style={[localStyles.participantAvatar, { backgroundColor: isCreatorRow ? colors.primary : isGuest ? colors.surfaceDark : `${colors.info}30`, borderWidth: 1, borderColor: isCreatorRow ? colors.primary : isGuest ? colors.borderDark : colors.info }]}>{isCreatorRow ? <Ionicons name='star' size={14} color={colors.backgroundDark} /> : <Text style={[localStyles.participantInitial, { color: isGuest ? colors.textSecondaryDark : colors.info }]}>{name.charAt(0).toUpperCase()}</Text>}</View>}
+									<View style={localStyles.participantInfo}>
+										<Text style={localStyles.participantName}>{isCreatorRow ? `${name} (vos)` : name}</Text>
+										<Text style={localStyles.participantBadge}>{isCreatorRow ? 'Creador' : isGuest ? 'Invitado' : 'Registrado'}</Text>
+									</View>
+									{!isCreatorRow && (
+										<TouchableOpacity onPress={() => handleRemoveParticipant(p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+											<Ionicons name='close-circle' size={22} color={colors.error} />
+										</TouchableOpacity>
+									)}
+								</View>
+							)
+						})
+					)}
+
+					{/* Agregar invitado */}
+					{slotsAvailable > 0 && (
+						<>
+							{/* Team picker inline cuando se quiere agregar invitado en modo equipos */}
+							{pendingGuestAdd && teamMode === 'two_teams' && (
+								<View style={localStyles.inlineTeamPicker}>
+									<Text style={localStyles.inlineTeamPickerTitle}>¿A qué equipo va {pendingGuestAdd}?</Text>
+									<View style={{ flexDirection: 'row', gap: 10 }}>
+										<TouchableOpacity style={[localStyles.inlineTeamBtn, { borderColor: TEAM_CONFIG.A.border, backgroundColor: TEAM_CONFIG.A.bg }, teamA.length >= perTeam && localStyles.inlineTeamBtnDisabled]} onPress={() => handleAddGuest('A')} disabled={teamA.length >= perTeam}>
+											<Text style={[localStyles.inlineTeamBtnText, { color: TEAM_CONFIG.A.color }]}>Equipo A {teamA.length >= perTeam ? '(lleno)' : `(${teamA.length}/${perTeam})`}</Text>
+										</TouchableOpacity>
+										<TouchableOpacity style={[localStyles.inlineTeamBtn, { borderColor: TEAM_CONFIG.B.border, backgroundColor: TEAM_CONFIG.B.bg }, teamB.length >= perTeam && localStyles.inlineTeamBtnDisabled]} onPress={() => handleAddGuest('B')} disabled={teamB.length >= perTeam}>
+											<Text style={[localStyles.inlineTeamBtnText, { color: TEAM_CONFIG.B.color }]}>Equipo B {teamB.length >= perTeam ? '(lleno)' : `(${teamB.length}/${perTeam})`}</Text>
+										</TouchableOpacity>
+									</View>
+									<TouchableOpacity onPress={() => setPendingGuestAdd(null)} style={{ alignItems: 'center', paddingVertical: 4 }}>
+										<Text style={{ color: colors.textSecondaryDark, fontSize: 13 }}>Cancelar</Text>
+									</TouchableOpacity>
+								</View>
+							)}
+
+							{!pendingGuestAdd && (
+								<View style={[styles.guestInputRow, { marginTop: 12 }]}>
+									<View style={[styles.inputWrapper, { flex: 1 }]}>
+										<Ionicons name='person-add-outline' size={18} color={colors.textSecondaryDark} />
+										<TextInput style={styles.input} placeholder='Agregar invitado por nombre' placeholderTextColor={colors.textSecondaryDark} value={newGuestName} onChangeText={setNewGuestName} onSubmitEditing={() => handleAddGuest()} returnKeyType='done' />
+									</View>
+									{newGuestName.trim().length > 0 && (
+										<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={() => handleAddGuest()}>
+											<Ionicons name='add' size={20} color={colors.backgroundDark} />
+										</TouchableOpacity>
+									)}
+								</View>
+							)}
+						</>
+					)}
 				</View>
 
 				{/* ── Nivel ── */}
@@ -392,6 +588,142 @@ export default function EditMatchScreen() {
 }
 
 const localStyles = StyleSheet.create({
+	teamCol: {
+		flex: 1,
+		borderRadius: 12,
+		borderWidth: 1,
+		padding: 10,
+		gap: 4,
+	},
+	teamHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+		marginBottom: 6,
+	},
+	teamDot: {
+		width: 8,
+		height: 8,
+		borderRadius: 4,
+	},
+	teamTitle: {
+		fontSize: 12,
+		fontWeight: '700',
+		flex: 1,
+	},
+	teamCount: {
+		fontSize: 11,
+		fontWeight: '600',
+	},
+	playerRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+		paddingVertical: 3,
+	},
+	avatar: {
+		width: 24,
+		height: 24,
+		borderRadius: 12,
+		alignItems: 'center',
+		justifyContent: 'center',
+		flexShrink: 0,
+	},
+	avatarInitial: {
+		color: 'white',
+		fontWeight: '700',
+		fontSize: 10,
+	},
+	playerName: {
+		flex: 1,
+		color: colors.textPrimaryDark,
+		fontSize: 12,
+		fontWeight: '500',
+	},
+	moveBtn: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 3,
+		borderWidth: 1,
+		borderRadius: 99,
+		paddingHorizontal: 5,
+		paddingVertical: 2,
+	},
+	moveBtnText: {
+		fontSize: 10,
+		fontWeight: '700',
+	},
+	emptySlotRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+		paddingVertical: 3,
+		opacity: 0.5,
+	},
+	emptySlotText: {
+		fontSize: 11,
+	},
+	unassignedBox: {
+		backgroundColor: colors.surfaceDark,
+		borderRadius: 10,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+		padding: 10,
+		gap: 8,
+		marginBottom: 10,
+	},
+	unassignedTitle: {
+		color: colors.textSecondaryDark,
+		fontSize: 11,
+		fontWeight: '600',
+	},
+	unassignedRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+	},
+	unassignedName: {
+		flex: 1,
+		color: colors.textPrimaryDark,
+		fontSize: 13,
+		fontWeight: '500',
+	},
+	assignBtn: {
+		borderWidth: 1,
+		borderRadius: 6,
+		paddingHorizontal: 8,
+		paddingVertical: 3,
+	},
+	inlineTeamPicker: {
+		backgroundColor: colors.surfaceDark,
+		borderRadius: 14,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+		padding: 14,
+		marginTop: 10,
+		gap: 10,
+	},
+	inlineTeamPickerTitle: {
+		color: colors.textPrimaryDark,
+		fontSize: 13,
+		fontWeight: '600',
+		textAlign: 'center',
+	},
+	inlineTeamBtn: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		borderWidth: 1,
+		borderRadius: 10,
+		paddingVertical: 10,
+	},
+	inlineTeamBtnDisabled: {
+		opacity: 0.4,
+	},
+	inlineTeamBtnText: {
+		fontSize: 12,
+		fontWeight: '700',
+	},
 	participantRow: {
 		flexDirection: 'row',
 		alignItems: 'center',

@@ -15,14 +15,18 @@ export const matchParticipantsService = {
 	},
 
 	async assignTeamBulk(matchId: string, assignments: { participantId: string; teamSlot: TeamSlot | null }[]) {
-		// Actualizar todos los team_slot en paralelo
 		return Promise.all(assignments.map(({ participantId, teamSlot }) => supabase.from('match_participants').update({ team_slot: teamSlot }).eq('id', participantId)))
 	},
 
-	async addGuest(matchId: string, guestName: Guest['name']) {
+	async clearAllTeamSlots(matchId: string) {
+		return await supabase.from('match_participants').update({ team_slot: null }).eq('match_id', matchId)
+	},
+
+	async addGuest(matchId: string, guestName: Guest['name'], teamSlot?: TeamSlot) {
 		return await supabase.from('match_participants').insert({
 			match_id: matchId,
 			guest_name: guestName,
+			...(teamSlot ? { team_slot: teamSlot } : {}),
 		})
 	},
 
@@ -39,15 +43,16 @@ export const matchParticipantsService = {
 			.from('match_participants')
 			.select(
 				`
+				id,
+				guest_name,
+				user_id,
+				team_slot,
+				user:profiles (
 					id,
-					guest_name,
-					user_id,
-					user:profiles (
-						id,
-						full_name,
-						avatar_url
-					)
-				`,
+					full_name,
+					avatar_url
+				)
+			`,
 			)
 			.eq('match_id', matchId)
 	},
