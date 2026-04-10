@@ -1,5 +1,6 @@
 import { authService } from '@/services/auth.service'
 import { profilesService } from '@/services/profiles.service'
+import { pushNotificationService } from '@/services/pushnotifications.service'
 import { Profile } from '@/types/database.types'
 import { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react'
@@ -54,6 +55,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	}
 
 	/* ============================
+	   PUSH NOTIFICATIONS SETUP
+	============================ */
+
+	const setupPushNotifications = async (userId: string) => {
+		try {
+			// Registrar el dispositivo para notificaciones
+			const token = await pushNotificationService.registerForPushNotifications()
+
+			if (token) {
+				// Guardar el token en la base de datos
+				await pushNotificationService.savePushToken(userId, token)
+				console.log('✅ Push notifications configured for user:', userId)
+			}
+		} catch (error) {
+			console.error('❌ Error setting up push notifications:', error)
+		}
+	}
+
+	const cleanupPushNotifications = async (userId: string) => {
+		try {
+			// Remover el token al cerrar sesión
+			await pushNotificationService.removePushToken(userId)
+			console.log('✅ Push token removed for user:', userId)
+		} catch (error) {
+			console.error('❌ Error removing push token:', error)
+		}
+	}
+
+	/* ============================
 	   INITIALIZE
 	============================ */
 
@@ -75,6 +105,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 					if (!isMounted) return
 					setProfile(fullProfile)
+
+					// Configurar notificaciones push
+					await setupPushNotifications(currentSession.user.id)
 				}
 			} catch (error) {
 				if (!isMounted) return
@@ -90,7 +123,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 		initialize()
 
-		const { data: listener } = authService.onAuthStateChange(async (_event: AuthChangeEvent, session: Session | null) => {
+		const { data: listener } = authService.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
 			if (!isMounted) return
 
 			setSession(session)
@@ -98,6 +131,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 			// Si no hay sesión, limpiar profile y salir
 			if (!session?.user) {
+				// Limpiar notificaciones al cerrar sesión
+				if (user?.id) {
+					await cleanupPushNotifications(user.id)
+				}
 				setProfile(null)
 				return
 			}
@@ -107,6 +144,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 				if (!isMounted) return
 				setProfile(fullProfile)
+
+				// Configurar notificaciones al iniciar sesión
+				if (event === 'SIGNED_IN') {
+					await setupPushNotifications(session.user.id)
+				}
 			} catch (error) {
 				console.log('Profile load error:', error)
 

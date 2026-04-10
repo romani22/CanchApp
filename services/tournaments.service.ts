@@ -1,28 +1,387 @@
-import { supabase } from '@/lib/supabase'
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
-export const tournamentsService = {
-	list() {
-		return supabase.from('tournaments').select('*').order('created_at', { ascending: false })
-	},
+export type SportType = 'futbol' | 'padel' | 'tenis' | 'basquet' | 'voley'
+export type TeamMode = 'none' | 'two_teams'
+export type TeamSlot = 'A' | 'B'
+export type SkillLevel = 'principiante' | 'intermedio' | 'avanzado'
+export type MatchStatus = 'open' | 'full' | 'completed' | 'cancelled'
+export type RequestStatus = 'pending' | 'accepted' | 'rejected'
+export type NotificationType = 'new_match' | 'join_request' | 'request_accepted' | 'request_rejected' | 'match_reminder' | 'match_cancelled' | 'player_joined'
+export type DevicePlatform = 'ios' | 'android' | 'web'
 
-	getById(id: string) {
-		return supabase
-			.from('tournaments')
-			.select(
-				`
-        *,
-        teams(*)
-      `,
-			)
-			.eq('id', id)
-			.maybeSingle()
-	},
+export interface Database {
+	public: {
+		Tables: {
+			profiles: {
+				Row: {
+					id: string
+					email: string
+					full_name: string
+					avatar_url: string | null
+					phone: string | null
+					bio: string | null
+					favorite_sports: SportType[]
+					skill_level: SkillLevel
+					zone: string | null
+					zone_coordinates: { x: number; y: number } | null
+					total_matches: number
+					total_wins: number
+					rating: number
+					rating_count: number
+					push_token: string | null
+					notifications_enabled: boolean
+					notification_radius: number
+					notify_new_matches: boolean
+					notify_join_requests: boolean
+					notify_request_response: boolean
+					notify_player_joined: boolean
+					notify_match_reminder: boolean
+					created_at: string
+					updated_at: string
+				}
+				Insert: {
+					id: string
+					email: string
+					full_name: string
+					avatar_url?: string | null
+					phone?: string | null
+					bio?: string | null
+					favorite_sports?: SportType[]
+					skill_level?: SkillLevel
+					zone?: string | null
+					zone_coordinates?: { x: number; y: number } | null
+					total_matches?: number
+					total_wins?: number
+					rating?: number
+					rating_count?: number
+					push_token?: string | null
+					notifications_enabled?: boolean
+					notification_radius?: number
+					notify_new_matches?: boolean
+					notify_join_requests?: boolean
+					notify_request_response?: boolean
+					notify_player_joined?: boolean
+					notify_match_reminder?: boolean
+					created_at?: string
+					updated_at?: string
+				}
+				Update: {
+					id?: string
+					email?: string
+					full_name?: string
+					avatar_url?: string | null
+					phone?: string | null
+					bio?: string | null
+					favorite_sports?: SportType[]
+					skill_level?: SkillLevel
+					zone?: string | null
+					zone_coordinates?: { x: number; y: number } | null
+					total_matches?: number
+					total_wins?: number
+					rating?: number
+					rating_count?: number
+					push_token?: string | null
+					notifications_enabled?: boolean
+					notification_radius?: number
+					notify_new_matches?: boolean
+					notify_join_requests?: boolean
+					notify_request_response?: boolean
+					notify_player_joined?: boolean
+					notify_match_reminder?: boolean
+					updated_at?: string
+				}
+			}
+			matches: {
+				Row: {
+					id: string
+					creator_id: string
+					sport: SportType
+					title: string
+					description: string | null
+					starts_at: string
+					end_time: string | null
+					venue_name: string
+					venue_address: string | null
+					venue_coordinates: { x: number; y: number } | null
+					venue_zone: string | null
+					total_players: number
+					players_needed: number
+					current_players: number
+					skill_level: SkillLevel
+					is_mixed: boolean
+					team_mode: TeamMode
+					status: MatchStatus
+					amenities: string[]
+					created_at: string
+					updated_at: string
+				}
+				Insert: {
+					id?: string
+					creator_id: string
+					sport: SportType
+					title: string
+					description?: string | null
+					starts_at: string
+					end_time?: string | null
+					venue_name: string
+					venue_address?: string | null
+					venue_coordinates?: { x: number; y: number } | null
+					venue_zone?: string | null
+					total_players: number
+					players_needed: number
+					current_players?: number
+					skill_level?: SkillLevel
+					is_mixed?: boolean
+					team_mode?: TeamMode
+					status?: MatchStatus
+					amenities?: string[]
+					created_at?: string
+					updated_at?: string
+				}
+				Update: {
+					creator_id?: string
+					sport?: SportType
+					title?: string
+					description?: string | null
+					starts_at?: string
+					end_time?: string | null
+					venue_name?: string
+					venue_address?: string | null
+					venue_coordinates?: { x: number; y: number } | null
+					venue_zone?: string | null
+					total_players?: number
+					players_needed?: number
+					current_players?: number
+					skill_level?: SkillLevel
+					is_mixed?: boolean
+					team_mode?: TeamMode
+					status?: MatchStatus
+					amenities?: string[]
+					updated_at?: string
+				}
+			}
+			match_participants: {
+				Row: {
+					id: string
+					match_id: string
+					user_id: string
+					joined_at: string
+					is_creator: boolean
+					team_slot: TeamSlot | null
+				}
+				Insert: {
+					id?: string
+					match_id: string
+					user_id: string
+					joined_at?: string
+					is_creator?: boolean
+					team_slot?: TeamSlot | null
+				}
+				Update: {
+					match_id?: string
+					user_id?: string
+					joined_at?: string
+					is_creator?: boolean
+					team_slot?: TeamSlot | null
+				}
+			}
+			join_requests: {
+				Row: {
+					id: string
+					match_id: string
+					user_id: string
+					status: RequestStatus
+					message: string | null
+					created_at: string
+					updated_at: string
+				}
+				Insert: {
+					id?: string
+					match_id: string
+					user_id: string
+					status?: RequestStatus
+					message?: string | null
+					created_at?: string
+					updated_at?: string
+				}
+				Update: {
+					match_id?: string
+					user_id?: string
+					status?: RequestStatus
+					message?: string | null
+					updated_at?: string
+				}
+			}
+			notifications: {
+				Row: {
+					id: string
+					user_id: string
+					type: NotificationType
+					title: string
+					body: string
+					data: Json
+					is_read: boolean
+					created_at: string
+				}
+				Insert: {
+					id?: string
+					user_id: string
+					type: NotificationType
+					title: string
+					body: string
+					data?: Json
+					is_read?: boolean
+					created_at?: string
+				}
+				Update: {
+					user_id?: string
+					type?: NotificationType
+					match_id?: string
+					title?: string
+					body?: string
+					data?: Json
+					is_read?: boolean
+				}
+			}
+			match_ratings: {
+				Row: {
+					id: string
+					match_id: string
+					rater_id: string
+					rated_user_id: string
+					rating: number
+					comment: string | null
+					created_at: string
+				}
+				Insert: {
+					id?: string
+					match_id: string
+					rater_id: string
+					rated_user_id: string
+					rating: number
+					comment?: string | null
+					created_at?: string
+				}
+				Update: {
+					match_id?: string
+					rater_id?: string
+					rated_user_id?: string
+					rating?: number
+					comment?: string | null
+				}
+			}
+			match_players: {
+				Row: {
+					id: string
+					match_id: string
+					added_by_user_id: string
+					user_id: string | null
+					player_name: string
+					team_slot: TeamSlot | null
+					created_at: string
+				}
+				Insert: {
+					id?: string
+					match_id: string
+					added_by_user_id: string
+					user_id?: string | null
+					player_name: string
+					team_slot?: TeamSlot | null
+					created_at?: string
+				}
+				Update: {
+					match_id?: string
+					added_by_user_id?: string
+					user_id?: string | null
+					player_name?: string
+					team_slot?: TeamSlot | null
+				}
+			}
+			push_tokens: {
+				Row: {
+					id: string
+					user_id: string
+					token: string
+					platform: DevicePlatform
+					device_name: string | null
+					is_active: boolean
+					created_at: string
+					last_used_at: string
+				}
+				Insert: {
+					id?: string
+					user_id: string
+					token: string
+					platform: DevicePlatform
+					device_name?: string | null
+					is_active?: boolean
+					created_at?: string
+					last_used_at?: string
+				}
+				Update: {
+					user_id?: string
+					token?: string
+					platform?: DevicePlatform
+					device_name?: string | null
+					is_active?: boolean
+					last_used_at?: string
+				}
+			}
+		}
+		Views: {}
+		Functions: {}
+		Enums: {
+			sport_type: SportType
+			skill_level: SkillLevel
+			match_status: MatchStatus
+			request_status: RequestStatus
+			notification_type: NotificationType
+		}
+	}
+}
 
-	create(data: any) {
-		return supabase.from('tournaments').insert(data)
-	},
+// Utility types for easier access
+export type Profile = Database['public']['Tables']['profiles']['Row']
+export type Match = Database['public']['Tables']['matches']['Row']
+export type MatchParticipant = Database['public']['Tables']['match_participants']['Row']
+export type MatchPlayer = Database['public']['Tables']['match_players']['Row']
+export type JoinRequest = Database['public']['Tables']['join_requests']['Row']
+export type Notification = Database['public']['Tables']['notifications']['Row']
+export type MatchRating = Database['public']['Tables']['match_ratings']['Row']
+export type PushToken = Database['public']['Tables']['push_tokens']['Row']
+export type InsertMatch = Database['public']['Tables']['matches']['Insert']
+export type MatchUpdate = Database['public']['Tables']['matches']['Update']
+export type Guest = { id: string; name: string }
 
-	update(id: string, data: any) {
-		return supabase.from('tournaments').update(data).eq('id', id)
-	},
+// Extended types with relations
+export type MatchWithCreator = Match & {
+	creator: Profile
+	participants: (MatchParticipant & { user: Profile })[]
+	players: (MatchPlayer & { user?: Profile; added_by: Profile })[]
+}
+
+export type JoinRequestWithUser = JoinRequest & {
+	user: Profile
+	match: Match
+}
+
+export type NotificationWithData = Notification & {
+	match?: Match
+	user?: Profile
+}
+
+export type MatchPlayerWithUser = MatchPlayer & {
+	user?: Profile
+	added_by: Profile
+}
+
+// Notification preferences
+export type NotificationSettings = {
+	notifications_enabled: boolean
+	notification_radius: number
+	notify_new_matches: boolean
+	notify_join_requests: boolean
+	notify_request_response: boolean
+	notify_player_joined: boolean
+	notify_match_reminder: boolean
 }

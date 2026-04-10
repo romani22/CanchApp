@@ -110,7 +110,7 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 							{/* Avatar stack — presionables */}
 							<View style={styles.avatarStack}>
 								{visibleParticipants.map((p, i) => {
-									const name = p.user?.full_name || p.guest_name || ''
+									const name = p.user?.full_name || ''
 									const avatarUrl = p.user?.avatar_url
 									return (
 										<TouchableOpacity
@@ -175,7 +175,7 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 								<Ionicons name='person' size={36} color={colors.textSecondaryDark} />
 							</View>
 						)}
-						<Text style={{ color: colors.textPrimaryDark, fontSize: 18, fontWeight: '600' }}>{selectedParticipant?.guest_name || selectedParticipant?.user?.full_name || 'Invitado'}</Text>
+						<Text style={{ color: colors.textPrimaryDark, fontSize: 18, fontWeight: '600' }}>{selectedParticipant?.user?.full_name || 'Invitado'}</Text>
 						<Text style={{ color: colors.textSecondaryDark, marginTop: 4, fontSize: 13 }}>{selectedParticipant?.user_id ? 'Jugador registrado' : 'Invitado'}</Text>
 						{selectedParticipant?.user?.skill_level && (
 							<View style={{ marginTop: 10, backgroundColor: `${colors.primary}20`, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 }}>

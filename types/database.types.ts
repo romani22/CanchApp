@@ -6,7 +6,8 @@ export type TeamSlot = 'A' | 'B'
 export type SkillLevel = 'principiante' | 'intermedio' | 'avanzado'
 export type MatchStatus = 'open' | 'full' | 'completed' | 'cancelled'
 export type RequestStatus = 'pending' | 'accepted' | 'rejected'
-export type NotificationType = 'new_match' | 'join_request' | 'request_accepted' | 'request_rejected' | 'match_reminder' | 'match_cancelled'
+export type NotificationType = 'new_match' | 'join_request' | 'request_accepted' | 'request_rejected' | 'match_reminder' | 'match_cancelled' | 'player_joined'
+export type DevicePlatform = 'ios' | 'android' | 'web'
 
 export interface Database {
 	public: {
@@ -29,6 +30,12 @@ export interface Database {
 					rating_count: number
 					push_token: string | null
 					notifications_enabled: boolean
+					notification_radius: number
+					notify_new_matches: boolean
+					notify_join_requests: boolean
+					notify_request_response: boolean
+					notify_player_joined: boolean
+					notify_match_reminder: boolean
 					created_at: string
 					updated_at: string
 				}
@@ -49,6 +56,12 @@ export interface Database {
 					rating_count?: number
 					push_token?: string | null
 					notifications_enabled?: boolean
+					notification_radius?: number
+					notify_new_matches?: boolean
+					notify_join_requests?: boolean
+					notify_request_response?: boolean
+					notify_player_joined?: boolean
+					notify_match_reminder?: boolean
 					created_at?: string
 					updated_at?: string
 				}
@@ -69,6 +82,12 @@ export interface Database {
 					rating_count?: number
 					push_token?: string | null
 					notifications_enabled?: boolean
+					notification_radius?: number
+					notify_new_matches?: boolean
+					notify_join_requests?: boolean
+					notify_request_response?: boolean
+					notify_player_joined?: boolean
+					notify_match_reminder?: boolean
 					updated_at?: string
 				}
 			}
@@ -251,6 +270,63 @@ export interface Database {
 					comment?: string | null
 				}
 			}
+			match_players: {
+				Row: {
+					id: string
+					match_id: string
+					added_by_user_id: string
+					user_id: string | null
+					player_name: string
+					team_slot: TeamSlot | null
+					created_at: string
+				}
+				Insert: {
+					id?: string
+					match_id: string
+					added_by_user_id: string
+					user_id?: string | null
+					player_name: string
+					team_slot?: TeamSlot | null
+					created_at?: string
+				}
+				Update: {
+					match_id?: string
+					added_by_user_id?: string
+					user_id?: string | null
+					player_name?: string
+					team_slot?: TeamSlot | null
+				}
+			}
+			push_tokens: {
+				Row: {
+					id: string
+					user_id: string
+					token: string
+					platform: DevicePlatform
+					device_name: string | null
+					is_active: boolean
+					created_at: string
+					last_used_at: string
+				}
+				Insert: {
+					id?: string
+					user_id: string
+					token: string
+					platform: DevicePlatform
+					device_name?: string | null
+					is_active?: boolean
+					created_at?: string
+					last_used_at?: string
+				}
+				Update: {
+					user_id?: string
+					token?: string
+					platform?: DevicePlatform
+					device_name?: string | null
+					is_active?: boolean
+					last_used_at?: string
+				}
+			}
 		}
 		Views: {}
 		Functions: {}
@@ -268,16 +344,20 @@ export interface Database {
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type Match = Database['public']['Tables']['matches']['Row']
 export type MatchParticipant = Database['public']['Tables']['match_participants']['Row']
+export type MatchPlayer = Database['public']['Tables']['match_players']['Row']
 export type JoinRequest = Database['public']['Tables']['join_requests']['Row']
 export type Notification = Database['public']['Tables']['notifications']['Row']
 export type MatchRating = Database['public']['Tables']['match_ratings']['Row']
+export type PushToken = Database['public']['Tables']['push_tokens']['Row']
 export type InsertMatch = Database['public']['Tables']['matches']['Insert']
 export type MatchUpdate = Database['public']['Tables']['matches']['Update']
 export type Guest = { id: string; name: string }
+
 // Extended types with relations
 export type MatchWithCreator = Match & {
 	creator: Profile
 	participants: (MatchParticipant & { user: Profile })[]
+	players: (MatchPlayer & { user?: Profile; added_by: Profile })[]
 }
 
 export type JoinRequestWithUser = JoinRequest & {
@@ -288,4 +368,20 @@ export type JoinRequestWithUser = JoinRequest & {
 export type NotificationWithData = Notification & {
 	match?: Match
 	user?: Profile
+}
+
+export type MatchPlayerWithUser = MatchPlayer & {
+	user?: Profile
+	added_by: Profile
+}
+
+// Notification preferences
+export type NotificationSettings = {
+	notifications_enabled: boolean
+	notification_radius: number
+	notify_new_matches: boolean
+	notify_join_requests: boolean
+	notify_request_response: boolean
+	notify_player_joined: boolean
+	notify_match_reminder: boolean
 }

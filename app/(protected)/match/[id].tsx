@@ -62,7 +62,7 @@ export default function MatchDetail() {
 		return () => {
 			supabase.removeChannel(channel)
 		}
-	}, [id])
+	}, [id, loadMatch])
 
 	// ── Join ──────────────────────────────────────────────────────────────
 	const handleJoinPress = () => {

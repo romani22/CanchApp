@@ -22,16 +22,8 @@ export const NotificationItem = ({ item, onPress }: Props) => {
 	}
 
 	return (
-		<TouchableOpacity
-			style={[styles.container, !item.is_read && styles.unreadContainer]}
-			onPress={onPress}
-			activeOpacity={0.7}
-		>
-			<Ionicons
-				name={(iconMap[item.type] || 'notifications-outline') as any}
-				size={24}
-				color={item.is_read ? colors.textSecondaryDark : colors.primary}
-			/>
+		<TouchableOpacity style={[styles.container, !item.is_read && styles.unreadContainer]} onPress={onPress} activeOpacity={0.7}>
+			<Ionicons name={(iconMap[item.type] || 'notifications-outline') as any} size={24} color={item.is_read ? colors.textSecondaryDark : colors.primary} />
 
 			<View style={styles.textContainer}>
 				<Text style={styles.title}>{item.title}</Text>

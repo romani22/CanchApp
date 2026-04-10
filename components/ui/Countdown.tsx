@@ -33,7 +33,7 @@ export default function Countdown({ date }: { date: string }) {
 		const timer = setInterval(() => {
 			const now = new Date()
 			// Ajuste de -3 horas para Argentina, se suma porque el objetivo es mostrar el tiempo restante en horario de Argentina
-			const distance = targetDate.getTime() - now.getTime() + 3 * 60 * 60 * 1000
+			const distance = targetDate.getTime() - now.getTime() + 0 * 60 * 60 * 1000
 			if (distance <= 0) {
 				clearInterval(timer)
 				setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 })

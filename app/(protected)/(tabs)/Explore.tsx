@@ -31,7 +31,7 @@ export default function ExploreScreen() {
 	useFocusEffect(
 		useCallback(() => {
 			refreshMatches()
-		}, []),
+		}, [refreshMatches]),
 	)
 
 	const filteredMatches = filters.sport ? matches.filter((m) => m.sport === filters.sport) : matches
@@ -75,6 +75,7 @@ export default function ExploreScreen() {
 				{ label: venueZone.inputText, lng: venueZone.coords!.x, lat: venueZone.coords!.y, radiusKm: draftRadius }
 			: // Texto libre → filtro por nombre (ilike sobre venue_zone)
 				{ label: venueZone.inputText, lng: 0, lat: 0, radiusKm: 0 }
+		console.log(zone)
 		setZone(zone)
 		setModalVisible(false)
 		venueZone.onDismiss()

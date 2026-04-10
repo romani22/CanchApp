@@ -43,7 +43,7 @@ function PlayerRow({ p, isCreator, canManage, currentUserId, onMove }: { p: Part
 	const name = p.user?.full_name ?? p.guest_name ?? 'Invitado'
 	const isMe = p.user_id === currentUserId
 	const otherSlot: TeamSlot = p.team_slot === 'A' ? 'B' : 'A'
-	const teamCfg = TEAM_CONFIG[p.team_slot ?? 'A']
+	// const teamCfg = TEAM_CONFIG[p.team_slot ?? 'A']
 
 	return (
 		<View style={localStyles.playerRow}>

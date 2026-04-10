@@ -28,7 +28,7 @@ export default function NotificationsScreen() {
 			setLoading(false)
 			setRefreshing(false)
 		}
-	}, [])
+	}, [refreshCount])
 
 	// Recarga cada vez que la tab de notificaciones queda en foco
 	useFocusEffect(

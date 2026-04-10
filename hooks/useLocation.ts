@@ -1,5 +1,5 @@
 import * as Location from 'expo-location'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 export type LocationResult = {
 	/** Nombre de la localidad, ej: "Morteros", "Córdoba" */
@@ -23,7 +23,7 @@ export function useLocation(): UseLocationReturn {
 	const [loading, setLoading] = useState(false)
 	const [geocoding, setGeocoding] = useState(false)
 	const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null)
-	const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+	// const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	const requestPermission = useCallback(async (): Promise<boolean> => {
 		const { status } = await Location.requestForegroundPermissionsAsync()

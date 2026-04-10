@@ -10,12 +10,10 @@ import Recommendations from '../dashboard/Recommendations'
 
 export default function HomeScreen() {
 	const { refreshMatches } = useMatches()
-	const [refreshingNext, setRefreshingNext] = useState(false)
 	const [refreshing, setRefreshing] = useState(false)
 
 	const handleRefresh = useCallback(async () => {
 		setRefreshing(true)
-		setRefreshingNext(true)
 		try {
 			await refreshMatches()
 		} finally {
@@ -26,20 +24,9 @@ export default function HomeScreen() {
 	return (
 		<SafeAreaView style={styles.container}>
 			<StatusBar barStyle='light-content' backgroundColor={colors.backgroundDark} />
-			<ScrollView
-				style={styles.scrollView}
-				contentContainerStyle={styles.scrollContent}
-				showsVerticalScrollIndicator={false}
-				refreshControl={
-					<RefreshControl
-						refreshing={refreshing}
-						onRefresh={handleRefresh}
-						tintColor={colors.primary}
-					/>
-				}
-			>
+			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}>
 				<Header />
-				<NextMatches shouldRefresh={refreshingNext} onRefreshDone={() => setRefreshingNext(false)} />
+				<NextMatches />
 				<Recommendations />
 			</ScrollView>
 		</SafeAreaView>
