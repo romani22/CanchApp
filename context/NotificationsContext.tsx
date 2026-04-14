@@ -25,20 +25,30 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 	}
 
 	useEffect(() => {
-		let channel: any
+		let channel: ReturnType<typeof supabase.channel> | null = null
+		let isMounted = true
 
 		const setup = async () => {
-			if (!user) return
+			if (!user?.id || !isMounted) return
+
 			const fetchCount = async (uid: string) => {
-				const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', uid).eq('is_read', false)
-				setUnreadCount(count ?? 0)
+				const { count, error } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', uid).eq('is_read', false)
+
+				if (error) {
+					console.error('Error fetching notification count:', error)
+					return
+				}
+
+				if (isMounted) {
+					setUnreadCount(count ?? 0)
+				}
 			}
 
 			setUserId(user.id)
 			await fetchCount(user.id)
 
 			channel = supabase
-				.channel('notifications-channel')
+				.channel(`notifications-${user.id}`)
 				.on(
 					'postgres_changes',
 					{
@@ -48,7 +58,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 						filter: `user_id=eq.${user.id}`,
 					},
 					() => {
-						setUnreadCount((prev) => prev + 1)
+						if (isMounted) setUnreadCount((prev) => prev + 1)
 					},
 				)
 				.on(
@@ -60,7 +70,8 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 						filter: `user_id=eq.${user.id}`,
 					},
 					(payload) => {
-						if (payload.old.is_read === false && payload.new.is_read === true) {
+						if (!isMounted) return
+						if (payload.old?.is_read === false && payload.new?.is_read === true) {
 							setUnreadCount((prev) => Math.max(prev - 1, 0))
 						}
 					},
@@ -71,9 +82,12 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 		setup()
 
 		return () => {
-			if (channel) supabase.removeChannel(channel)
+			isMounted = false
+			if (channel) {
+				supabase.removeChannel(channel)
+			}
 		}
-	}, [])
+	}, [user?.id])
 
 	return <NotificationsContext.Provider value={{ unreadCount, refreshCount }}>{children}</NotificationsContext.Provider>
 }

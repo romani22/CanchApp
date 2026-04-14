@@ -22,6 +22,12 @@ const levels = [
 	{ label: 'Avanzado', value: 'avanzado' as const },
 ]
 
+const getErrorMessage = (error: unknown): string => {
+	if (error instanceof Error) return error.message
+	if (typeof error === 'string') return error
+	return 'Ocurrió un error inesperado'
+}
+
 export default function Register() {
 	const [selectedSports, setSelectedSports] = useState(['futbol'])
 	const [level, setLevel] = useState<'principiante' | 'intermedio' | 'avanzado'>('intermedio')
@@ -79,8 +85,8 @@ export default function Register() {
 			if (updateError) throw updateError
 
 			router.replace('/(protected)/(tabs)/Dashboard')
-		} catch (err: any) {
-			setError(err.message)
+		} catch (err: unknown) {
+			setError(getErrorMessage(err))
 		} finally {
 			setLoading(false)
 		}

@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabase'
 import { MatchPlayer, MatchPlayerWithUser, Profile, TeamSlot } from '@/types/database.types'
 
+const normalizeSearchQuery = (query: string) => query.trim().replace(/[%_\\]/g, '\\$&')
+const normalizeSearchLimit = (limit: number) => Math.max(1, Math.min(limit, 10))
+
 export interface AddPlayerInput {
 	user_id?: string | null
 	player_name: string
@@ -195,11 +198,15 @@ export const matchPlayersService = {
 	 */
 	async searchUsers(query: string, limit: number = 10): Promise<Profile[]> {
 		try {
-			const { data, error } = await supabase.from('profiles').select('*').or(`full_name.ilike.%${query}%,email.ilike.%${query}%`).limit(limit)
+			const trimmedQuery = query.trim()
+			if (trimmedQuery.length < 2) return []
+
+			const safeQuery = normalizeSearchQuery(trimmedQuery)
+			const { data, error } = await supabase.from('profiles').select('id, full_name, avatar_url, email, skill_level').or(`full_name.ilike.%${safeQuery}%,email.ilike.%${safeQuery}%`).limit(normalizeSearchLimit(limit))
 
 			if (error) throw error
 
-			return data
+			return (data ?? []) as Profile[]
 		} catch (error) {
 			console.error('Error searching users:', error)
 			return []

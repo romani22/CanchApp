@@ -15,8 +15,9 @@ export const authService = {
 	},
 
 	validateEmail: (email: string): boolean => {
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-		return emailRegex.test(email)
+		const trimmed = email.trim().toLowerCase()
+		if (trimmed.length > 254) return false
+		return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(trimmed)
 	},
 
 	validatePassword: (password: string): { isValid: boolean; errors: string[] } => {

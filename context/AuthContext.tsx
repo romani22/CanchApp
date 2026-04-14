@@ -3,7 +3,13 @@ import { profilesService } from '@/services/profiles.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { Profile } from '@/types/database.types'
 import { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react'
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react'
+
+const getErrorMessage = (error: unknown): string => {
+	if (error instanceof Error) return error.message
+	if (typeof error === 'string') return error
+	return 'Ocurrió un error inesperado'
+}
 
 interface AuthState {
 	user: User | null
@@ -33,6 +39,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const [session, setSession] = useState<Session | null>(null)
 	const [profile, setProfile] = useState<Profile | null>(null)
 	const [isLoading, setIsLoading] = useState<boolean>(true)
+	const userIdRef = useRef<string | null>(null)
 
 	/* ============================
 	   TIMEOUT HELPER
@@ -109,13 +116,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 					// Configurar notificaciones push
 					await setupPushNotifications(currentSession.user.id)
 				}
-			} catch (error) {
+			} catch (error: unknown) {
 				if (!isMounted) return
 
-				// SOLO limpiar estado (no navegar)
-				setUser(null)
-				setSession(null)
-				setProfile(null)
+				console.error('Auth initialization failed:', getErrorMessage(error))
+				// No limpiar sesión/usuario: si hay sesión cacheada en AsyncStorage
+				// el usuario puede seguir usando la app aunque falle la red
 			} finally {
 				if (isMounted) setIsLoading(false)
 			}
@@ -126,14 +132,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		const { data: listener } = authService.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
 			if (!isMounted) return
 
+			const previousUserId = userIdRef.current
 			setSession(session)
 			setUser(session?.user ?? null)
 
 			// Si no hay sesión, limpiar profile y salir
 			if (!session?.user) {
 				// Limpiar notificaciones al cerrar sesión
-				if (user?.id) {
-					await cleanupPushNotifications(user.id)
+				if (previousUserId) {
+					await cleanupPushNotifications(previousUserId)
 				}
 				setProfile(null)
 				return
@@ -149,13 +156,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				if (event === 'SIGNED_IN') {
 					await setupPushNotifications(session.user.id)
 				}
-			} catch (error) {
-				console.log('Profile load error:', error)
-
-				// Solo limpiar estado
-				setUser(null)
-				setSession(null)
-				setProfile(null)
+			} catch (error: unknown) {
+				console.log('Profile load error:', getErrorMessage(error))
+				// No cerrar sesión por error de red al cargar el perfil
+				if (isMounted) setProfile(null)
 			}
 		})
 
@@ -188,6 +192,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		setProfile(fullProfile)
 	}
 
+	useEffect(() => {
+		userIdRef.current = user?.id ?? null
+	}, [user])
+
 	const updateProfile = async (updates: Partial<Profile>) => {
 		if (!user) return { error: new Error('No user logged in') }
 
@@ -195,8 +203,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			await profilesService.updateProfile(user.id, updates)
 			await refreshProfile()
 			return { error: null }
-		} catch (error: any) {
-			return { error }
+		} catch (error: unknown) {
+			return { error: new Error(getErrorMessage(error)) }
 		}
 	}
 
