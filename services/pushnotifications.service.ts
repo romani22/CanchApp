@@ -187,16 +187,35 @@ export const pushNotificationService = {
 		try {
 			const seconds = Math.max(0, Math.floor((triggerDate.getTime() - Date.now()) / 1000))
 
-			const identifier = await Notifications.scheduleNotificationAsync({
-				content: {
-					title: config.title,
-					body: config.body,
-					data: config.data || {},
-					sound: config.sound !== false,
-					priority: config.priority || 'high',
-				},
-				trigger: seconds > 0 ? { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds } : null,
-			})
+			const content = {
+				title: config.title,
+				body: config.body,
+				data: config.data || {},
+				sound: config.sound !== false,
+				priority: config.priority || 'high',
+			}
+
+			if (seconds <= 0) {
+				return await Notifications.scheduleNotificationAsync({ content, trigger: null })
+			}
+
+			let identifier: string
+			try {
+				// DATE fires at an absolute time — exact even in Doze mode.
+				// Requires SCHEDULE_EXACT_ALARM (Android 12) or USE_EXACT_ALARM (Android 13+),
+				// both declared in app.json. On Android 13+ the permission is auto-granted.
+				identifier = await Notifications.scheduleNotificationAsync({
+					content,
+					trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: triggerDate },
+				})
+			} catch {
+				// Fallback for Android 12 if the user hasn't granted SCHEDULE_EXACT_ALARM yet.
+				// Notification may arrive a few minutes late due to Doze mode coalescing.
+				identifier = await Notifications.scheduleNotificationAsync({
+					content,
+					trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds },
+				})
+			}
 
 			return identifier
 		} catch (error) {
@@ -210,7 +229,7 @@ export const pushNotificationService = {
 	 */
 	async scheduleMatchReminder(matchId: string, matchTitle: string, venueName: string, startsAt: Date): Promise<string | null> {
 		try {
-			const reminderTime = new Date(startsAt.getTime() - 10 * 60 * 1000) // 10 minutos antes
+			const reminderTime = new Date(startsAt.getTime() - 11 * 60 * 1000) // 11 min antes para compensar ~1 min de delay del OS
 
 			// Solo programar si es en el futuro
 			if (reminderTime <= new Date()) {
@@ -288,14 +307,14 @@ export const pushNotificationService = {
 	/**
 	 * Listener para cuando se recibe una notificación
 	 */
-	addNotificationReceivedListener(callback: (notification: Notifications.Notification) => void): Notifications.Subscription {
+	addNotificationReceivedListener(callback: (notification: Notifications.Notification) => void): ReturnType<typeof Notifications.addNotificationReceivedListener> {
 		return Notifications.addNotificationReceivedListener(callback)
 	},
 
 	/**
 	 * Listener para cuando el usuario toca una notificación
 	 */
-	addNotificationResponseReceivedListener(callback: (response: Notifications.NotificationResponse) => void): Notifications.Subscription {
+	addNotificationResponseReceivedListener(callback: (response: Notifications.NotificationResponse) => void): ReturnType<typeof Notifications.addNotificationResponseReceivedListener> {
 		return Notifications.addNotificationResponseReceivedListener(callback)
 	},
 

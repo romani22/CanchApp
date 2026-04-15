@@ -7,6 +7,7 @@ import { profilesService, UserStats } from '@/services/profiles.service'
 import { colors } from '@/theme/colors'
 import { SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
+import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -218,6 +219,11 @@ export default function ProfileScreen() {
 				/>
 
 				<View style={styles.section}>
+					<TouchableOpacity style={styles.actionButton} onPress={() => router.push('/(protected)/notificationsSettings/notifications')}>
+						<Ionicons name='notifications-outline' size={22} color={colors.primary} />
+						<Text style={styles.actionButtonText}>Configurar notificaciones</Text>
+					</TouchableOpacity>
+
 					<TouchableOpacity style={styles.actionButton} onPress={() => setPasswordModalVisible(true)}>
 						<Ionicons name='key-outline' size={22} color={colors.primary} />
 						<Text style={styles.actionButtonText}>Cambiar contraseña</Text>

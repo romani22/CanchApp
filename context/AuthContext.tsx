@@ -119,9 +119,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			} catch (error: unknown) {
 				if (!isMounted) return
 
-				console.error('Auth initialization failed:', getErrorMessage(error))
-				// No limpiar sesión/usuario: si hay sesión cacheada en AsyncStorage
-				// el usuario puede seguir usando la app aunque falle la red
+				// En caso de timeout u otro error, limpiar el estado para redirigir al login
+				setUser(null)
+				setSession(null)
+				setProfile(null)
 			} finally {
 				if (isMounted) setIsLoading(false)
 			}
@@ -157,9 +158,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 					await setupPushNotifications(session.user.id)
 				}
 			} catch (error: unknown) {
-				console.log('Profile load error:', getErrorMessage(error))
-				// No cerrar sesión por error de red al cargar el perfil
-				if (isMounted) setProfile(null)
+				// En caso de timeout u otro error, limpiar el estado para redirigir al login
+				if (isMounted) {
+					setUser(null)
+					setSession(null)
+					setProfile(null)
+				}
 			}
 		})
 

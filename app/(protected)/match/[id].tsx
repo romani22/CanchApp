@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
+import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
 import { TeamSlot } from '@/types/database.types'
 import { getSportImage } from '@/Utils/sportImage'
@@ -81,6 +82,12 @@ export default function MatchDetail() {
 			const { error } = await matchParticipantsService.join(id as string, user!.id, teamSlot)
 			if (error) throw error
 			await loadMatch()
+			// Schedule a local reminder 10 minutes before the match starts
+			if (match?.starts_at) {
+				pushNotificationService
+					.scheduleMatchReminder(id as string, match.title, match.venue_name, new Date(match.starts_at))
+					.catch((err) => console.warn('[MatchDetail] Could not schedule reminder:', err))
+			}
 		} catch (err) {
 			console.error('[MatchDetail] Error uniéndose:', err)
 		} finally {

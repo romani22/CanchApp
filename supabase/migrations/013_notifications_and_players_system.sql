@@ -294,7 +294,7 @@ BEGIN
     is_read
   ) VALUES (
     p_user_id,
-    p_type,
+    p_type::notification_type,
     p_title,
     p_body,
     p_data,

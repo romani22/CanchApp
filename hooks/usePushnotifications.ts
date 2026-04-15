@@ -4,123 +4,121 @@ import { NotificationData, pushNotificationService } from '@/services/pushnotifi
 
 import * as Notifications from 'expo-notifications'
 import { useRouter } from 'expo-router'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
+/**
+ * Gestiona los listeners de notificaciones push para toda la sesión autenticada.
+ *
+ * Responsabilidades:
+ *  - Escuchar notificaciones recibidas (foreground) y taps (background/killed)
+ *  - Navegar al destino correcto al tocar una notificación
+ *  - Programar recordatorios locales cuando llegan notificaciones con datos de partido
+ *  - Persistir recordatorios de partido en la tabla notifications (para el inbox)
+ *
+ * El REGISTRO del push token lo maneja exclusivamente AuthContext.setupPushNotifications
+ * para evitar requests concurrentes que pueden invalidar el refresh token de Supabase.
+ */
 export function usePushNotifications() {
-	const [expoPushToken, setExpoPushToken] = useState<string | null>(null)
 	const [notification, setNotification] = useState<Notifications.Notification | null>(null)
-	const [isRegistering, setIsRegistering] = useState(false)
-	const notificationListener = useRef<Notifications.Subscription | null>(null)
-	const responseListener = useRef<Notifications.Subscription | null>(null)
+	const notificationListener = useRef<ReturnType<typeof Notifications.addNotificationReceivedListener> | null>(null)
+	const responseListener = useRef<ReturnType<typeof Notifications.addNotificationResponseReceivedListener> | null>(null)
+	// Evita duplicados cuando received + response listener disparan para la misma notificación
+	const recordedRemindersRef = useRef<Set<string>>(new Set())
 	const router = useRouter()
 	const { user } = useAuth()
 
-	useEffect(() => {
-		if (!user?.id) return
+	// ── Inbox: persiste recordatorios locales en la tabla notifications ──────
+	const persistMatchReminder = useCallback(
+		async (n: Notifications.Notification) => {
+			const data = n.request.content.data as NotificationData
+			if (data?.type !== 'match_reminder' || !data.match_id || !user?.id) return
+			if (recordedRemindersRef.current.has(data.match_id)) return
 
-		// Registrar el dispositivo y obtener el token
-		registerForPushNotifications()
+			recordedRemindersRef.current.add(data.match_id)
+			notificationsService
+				.create(user.id, 'match_reminder', n.request.content.title ?? '⏰ Tu partido comienza pronto', n.request.content.body ?? '', { match_id: data.match_id })
+				.catch(() => {
+					recordedRemindersRef.current.delete(data.match_id!)
+				})
+		},
+		[user?.id],
+	)
 
-		// Listener: cuando se recibe una notificación
-		notificationListener.current = pushNotificationService.addNotificationReceivedListener((notification) => {
-			console.log('📩 Notification received:', notification)
-			setNotification(notification)
-
-			// Actualizar el badge count
-			updateBadgeCount()
-		})
-
-		// Listener: cuando el usuario toca una notificación
-		responseListener.current = pushNotificationService.addNotificationResponseReceivedListener((response) => {
-			console.log('👆 Notification tapped:', response)
-			handleNotificationTap(response.notification.request.content.data as NotificationData)
-		})
-
-		// Actualizar badge count inicial
-		updateBadgeCount()
-
-		// Cleanup
-		return () => {
-			if (notificationListener.current) {
-				notificationListener.current.remove()
-			}
-			if (responseListener.current) {
-				responseListener.current.remove()
-			}
+	// ── Recordatorio local: programa al recibir request_accepted / player_joined ─
+	const scheduleReminderFromNotification = useCallback(async (data: NotificationData) => {
+		const { type, match_id, match_title, venue_name, starts_at } = data
+		if ((type === 'request_accepted' || type === 'player_joined') && match_id && match_title && venue_name && starts_at) {
+			pushNotificationService
+				.scheduleMatchReminder(match_id, match_title, venue_name, new Date(starts_at))
+				.catch((err) => console.warn('[usePushNotifications] Could not schedule reminder:', err))
 		}
-	}, [user?.id])
+	}, [])
 
-	const registerForPushNotifications = async () => {
-		if (!user?.id) return
+	// ── Navegación al tocar una notificación ─────────────────────────────────
+	const handleNotificationTap = useCallback(
+		(data: NotificationData) => {
+			const { type, match_id } = data
 
-		try {
-			setIsRegistering(true)
-			const token = await pushNotificationService.registerForPushNotifications()
-
-			if (token) {
-				await pushNotificationService.savePushToken(user.id, token)
-				setExpoPushToken(token)
-				console.log('✅ Push token registered:', token)
+			switch (type) {
+				case 'new_match':
+				case 'match_reminder':
+					if (match_id) router.push(`/(protected)/match/${match_id}`)
+					break
+				case 'join_request':
+					if (match_id) router.push(`/(protected)/match/requests`)
+					break
+				case 'request_accepted':
+				case 'request_rejected':
+				case 'player_joined':
+					if (match_id) router.push(`/(protected)/match/${match_id}`)
+					break
+				default:
+					router.push('/(protected)/(tabs)/Notifications')
 			}
-		} catch (error) {
-			console.error('❌ Error registering push notifications:', error)
-		} finally {
-			setIsRegistering(false)
-		}
-	}
+		},
+		[router],
+	)
 
-	const updateBadgeCount = async () => {
+	// ── Utilidades expuestas ──────────────────────────────────────────────────
+	const updateBadgeCount = useCallback(async () => {
 		if (!user?.id) return
-
 		try {
 			const count = await notificationsService.getUnreadCount(user.id)
 			await pushNotificationService.setBadgeCount(count)
 		} catch (error) {
 			console.error('Error updating badge count:', error)
 		}
-	}
+	}, [user?.id])
 
-	const handleNotificationTap = (data: NotificationData) => {
-		const { type, match_id, request_id } = data
+	// ── Listeners ─────────────────────────────────────────────────────────────
+	useEffect(() => {
+		if (!user?.id) return
 
-		switch (type) {
-			case 'new_match':
-			case 'match_reminder':
-				if (match_id) {
-					router.push(`/(protected)/match/${match_id}`)
-				}
-				break
+		// App en primer plano
+		notificationListener.current = pushNotificationService.addNotificationReceivedListener((n) => {
+			setNotification(n)
+			persistMatchReminder(n)
+			scheduleReminderFromNotification(n.request.content.data as NotificationData)
+			updateBadgeCount()
+		})
 
-			case 'join_request':
-				if (match_id) {
-					router.push(`/(protected)/match/requests`)
-				}
-				break
+		// App en segundo plano o cerrada — el usuario toca la notificación
+		responseListener.current = pushNotificationService.addNotificationResponseReceivedListener((response) => {
+			persistMatchReminder(response.notification)
+			handleNotificationTap(response.notification.request.content.data as NotificationData)
+		})
 
-			case 'request_accepted':
-			case 'request_rejected':
-				if (match_id) {
-					router.push(`/(protected)/match/${match_id}`)
-				}
-				break
+		updateBadgeCount()
 
-			case 'player_joined':
-				if (match_id) {
-					router.push(`/(protected)/match/${match_id}`)
-				}
-				break
-
-			default:
-				// Ir a la pantalla de notificaciones
-				router.push('/(protected)/notificationsSettings/notifications')
-				break
+		return () => {
+			notificationListener.current?.remove()
+			responseListener.current?.remove()
 		}
-	}
+	}, [user?.id, persistMatchReminder, scheduleReminderFromNotification, handleNotificationTap, updateBadgeCount])
 
 	const scheduleMatchReminder = async (matchId: string, matchTitle: string, venueName: string, startsAt: Date) => {
 		try {
-			const identifier = await pushNotificationService.scheduleMatchReminder(matchId, matchTitle, venueName, startsAt)
-			return identifier
+			return await pushNotificationService.scheduleMatchReminder(matchId, matchTitle, venueName, startsAt)
 		} catch (error) {
 			console.error('Error scheduling match reminder:', error)
 			return null
@@ -137,33 +135,20 @@ export function usePushNotifications() {
 
 	const sendLocalNotification = async (title: string, body: string, data?: NotificationData) => {
 		try {
-			await pushNotificationService.sendLocalNotification({
-				title,
-				body,
-				data,
-			})
+			await pushNotificationService.sendLocalNotification({ title, body, data })
 		} catch (error) {
 			console.error('Error sending local notification:', error)
 		}
 	}
 
-	const checkPermissions = async () => {
-		return await pushNotificationService.checkPermissions()
-	}
-
-	const requestPermissions = async () => {
-		return await registerForPushNotifications()
-	}
+	const checkPermissions = () => pushNotificationService.checkPermissions()
 
 	return {
-		expoPushToken,
 		notification,
-		isRegistering,
 		scheduleMatchReminder,
 		cancelReminder,
 		sendLocalNotification,
 		updateBadgeCount,
 		checkPermissions,
-		requestPermissions,
 	}
 }

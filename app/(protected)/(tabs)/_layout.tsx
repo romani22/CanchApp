@@ -1,10 +1,16 @@
 import { useAuth } from '@/context/AuthContext'
+import { usePushNotifications } from '@/hooks/usePushnotifications'
 import { FontAwesome5, MaterialIcons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Redirect, Tabs } from 'expo-router'
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native'
+
 export default function TabsLayout() {
 	const { isAuthenticated, isLoading } = useAuth()
+
+	// Mantener los listeners de notificaciones activos durante toda la sesión autenticada.
+	// Aquí es el único lugar donde se monta el hook — evita duplicados.
+	usePushNotifications()
 
 	if (isLoading) {
 		return (
