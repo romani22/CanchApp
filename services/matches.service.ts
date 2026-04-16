@@ -222,7 +222,7 @@ export const matchesService = {
 			.filter((m) => {
 				if (seen.has(m.id)) return false
 				seen.add(m.id)
-				return m.starts_at >= now
+				return m.starts_at >= now && m.status !== 'cancelled'
 			})
 			.sort((a, b) => a.starts_at.localeCompare(b.starts_at))
 

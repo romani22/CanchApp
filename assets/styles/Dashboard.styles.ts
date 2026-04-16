@@ -327,4 +327,16 @@ export const styles = StyleSheet.create({
 	navLabelActive: {
 		color: '#34d399',
 	},
+	emptyContainer: {
+		paddingVertical: 40,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	emptyText: {
+		color: '#888', // Gris más claro para no distraer
+		textAlign: 'center',
+		marginTop: 12,
+		fontSize: 16,
+		fontFamily: 'tu-fuente-medium',
+	},
 })
