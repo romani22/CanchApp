@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { format, parseISO } from 'date-fns'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, ImageBackground, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, ImageBackground, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 export default function MatchDetail() {
@@ -26,6 +26,7 @@ export default function MatchDetail() {
 	const [loading, setLoading] = useState(true)
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
+	const [cancelling, setCancelling] = useState(false)
 	// Modal para elegir equipo al unirse
 	const [teamPickerVisible, setTeamPickerVisible] = useState(false)
 
@@ -110,6 +111,29 @@ export default function MatchDetail() {
 		}
 	}
 
+	// ── Cancel match (creator only) ──────────────────────────────────────
+	const handleCancelMatch = () => {
+		Alert.alert('Cancelar partido', '¿Estás seguro? Se avisará a todos los participantes que el partido fue cancelado.', [
+			{ text: 'Volver', style: 'cancel' },
+			{ text: 'Sí, cancelar', style: 'destructive', onPress: confirmCancelMatch },
+		])
+	}
+
+	const confirmCancelMatch = async () => {
+		try {
+			setCancelling(true)
+			await matchesService.cancel(id as string)
+			// Cancela el recordatorio local si existe
+			pushNotificationService.cancelMatchReminder(id as string).catch(() => {})
+			router.replace('/(protected)/(tabs)/My-Matches')
+		} catch (err) {
+			Alert.alert('Error', 'No se pudo cancelar el partido. Intentá de nuevo.')
+			console.error('[MatchDetail] Error cancelando:', err)
+		} finally {
+			setCancelling(false)
+		}
+	}
+
 	// ── Move player between teams (creator only) ─────────────────────────
 	const handleMovePlayer = async (participantId: string, toSlot: TeamSlot) => {
 		try {
@@ -139,6 +163,7 @@ export default function MatchDetail() {
 	const playersNeeded = Math.max(0, match.total_players - currentPlayers)
 	const isFull = playersNeeded === 0
 	const isOpen = match.status === 'open'
+	const isCancelled = match.status === 'cancelled'
 	const isCreator = match.creator_id === user?.id
 	const isParticipant = match.participants?.some((p: any) => p.user_id === user?.id) ?? false
 	const hasTeams = match.team_mode === 'two_teams'
@@ -157,7 +182,7 @@ export default function MatchDetail() {
 						<TouchableOpacity style={styles.iconButton} onPress={() => router.back()}>
 							<Ionicons name='arrow-back' size={24} color='white' />
 						</TouchableOpacity>
-						{isCreator && (
+						{isCreator && !isCancelled && (
 							<TouchableOpacity style={styles.iconButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
 								<Ionicons name='pencil' size={20} color='white' />
 							</TouchableOpacity>
@@ -166,6 +191,14 @@ export default function MatchDetail() {
 				</ImageBackground>
 
 				<View style={styles.contentContainer}>
+					{/* Banner de partido cancelado */}
+					{isCancelled && (
+						<View style={localStyles.cancelledBanner}>
+							<Ionicons name='close-circle' size={20} color={colors.error} />
+							<Text style={localStyles.cancelledBannerText}>Este partido fue cancelado</Text>
+						</View>
+					)}
+
 					<Text style={styles.title}>{match.title}</Text>
 					<Text style={styles.subtitle}>{match.venue_name}</Text>
 
@@ -228,10 +261,29 @@ export default function MatchDetail() {
 
 			{/* Footer */}
 			<View style={styles.footer}>
-				{isCreator ? (
-					<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
-						<Text style={styles.mainButtonText}>Editar partido</Text>
-					</TouchableOpacity>
+				{isCancelled ? (
+					<View style={localStyles.cancelledFooter}>
+						<Ionicons name='close-circle-outline' size={20} color={colors.textSecondaryDark} />
+						<Text style={localStyles.cancelledFooterText}>Partido cancelado</Text>
+					</View>
+				) : isCreator ? (
+					<View style={localStyles.creatorActions}>
+						<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
+							<Text style={styles.mainButtonText}>Editar partido</Text>
+						</TouchableOpacity>
+						{(isOpen || match.status === 'full') && (
+							<TouchableOpacity style={localStyles.cancelButton} onPress={handleCancelMatch} disabled={cancelling}>
+								{cancelling ? (
+									<ActivityIndicator color={colors.error} size='small' />
+								) : (
+									<>
+										<Ionicons name='close-circle-outline' size={20} color={colors.error} />
+										<Text style={localStyles.cancelButtonText}>Cancelar partido</Text>
+									</>
+								)}
+							</TouchableOpacity>
+						)}
+					</View>
 				) : isParticipant ? (
 					<TouchableOpacity style={[styles.mainButton, { backgroundColor: colors.error }]} onPress={handleLeave} disabled={actionLoading}>
 						{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
@@ -275,6 +327,56 @@ export default function MatchDetail() {
 }
 
 const localStyles = StyleSheet.create({
+	cancelledBanner: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		backgroundColor: `${colors.error}15`,
+		borderWidth: 1,
+		borderColor: `${colors.error}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		marginBottom: 12,
+	},
+	cancelledBannerText: {
+		color: colors.error,
+		fontSize: 14,
+		fontWeight: '600',
+		flex: 1,
+	},
+	cancelledFooter: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 8,
+		paddingVertical: 16,
+	},
+	cancelledFooterText: {
+		color: colors.textSecondaryDark,
+		fontSize: 15,
+		fontWeight: '600',
+	},
+	creatorActions: {
+		gap: 10,
+		width: '100%',
+	},
+	cancelButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 8,
+		paddingVertical: 14,
+		borderRadius: 14,
+		borderWidth: 1,
+		borderColor: `${colors.error}40`,
+		backgroundColor: `${colors.error}12`,
+	},
+	cancelButtonText: {
+		color: colors.error,
+		fontSize: 15,
+		fontWeight: '600',
+	},
 	teamsBadge: {
 		flexDirection: 'row',
 		alignItems: 'center',

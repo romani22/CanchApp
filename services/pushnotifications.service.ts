@@ -259,6 +259,23 @@ export const pushNotificationService = {
 	},
 
 	/**
+	 * Cancela el recordatorio local programado para un partido específico.
+	 * Busca entre todas las notificaciones programadas por match_id en el campo data.
+	 */
+	async cancelMatchReminder(matchId: string): Promise<void> {
+		try {
+			const scheduled = await Notifications.getAllScheduledNotificationsAsync()
+			const reminder = scheduled.find((n) => n.content.data?.match_id === matchId && n.content.data?.type === 'match_reminder')
+			if (reminder) {
+				await Notifications.cancelScheduledNotificationAsync(reminder.identifier)
+				console.log('Match reminder cancelled for match:', matchId)
+			}
+		} catch (error) {
+			console.error('Error cancelling match reminder:', error)
+		}
+	},
+
+	/**
 	 * Cancela una notificación programada
 	 */
 	async cancelScheduledNotification(identifier: string): Promise<void> {

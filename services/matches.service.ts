@@ -241,6 +241,11 @@ export const matchesService = {
 		return supabase.from('matches').update(payload).eq('id', matchId)
 	},
 
+	async cancel(matchId: string): Promise<void> {
+		const { error } = await supabase.from('matches').update({ status: 'cancelled' }).eq('id', matchId)
+		if (error) throw error
+	},
+
 	remove(matchId: string) {
 		return supabase.from('matches').delete().eq('id', matchId)
 	},

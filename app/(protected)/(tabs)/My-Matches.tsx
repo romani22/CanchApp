@@ -40,9 +40,14 @@ export default function MyMatchesScreen() {
 			const created = (createdRes.data || []).map((m) => ({ ...m, relation: 'created' as const }))
 			const joined = (joinedRes.data || []).filter((m) => m.creator_id !== user.id).map((m) => ({ ...m, relation: 'joined' as const }))
 
-			setCreatedMatches(created.filter((m) => isAfter(parseISO(m.starts_at), now)))
-			setJoinedMatches(joined.filter((m) => isAfter(parseISO(m.starts_at), now)))
-			setHistoryMatches([...created, ...joined].filter((m) => !isAfter(parseISO(m.starts_at), now)))
+			// Un partido va a "activo" solo si es futuro Y no está cancelado
+			const isActive = (m: PersonalMatch) => isAfter(parseISO(m.starts_at), now) && m.status !== 'cancelled'
+			// Va a historial si ya pasó O fue cancelado (sin importar la fecha)
+			const isHistory = (m: PersonalMatch) => !isAfter(parseISO(m.starts_at), now) || m.status === 'cancelled'
+
+			setCreatedMatches(created.filter(isActive))
+			setJoinedMatches(joined.filter(isActive))
+			setHistoryMatches([...created, ...joined].filter(isHistory))
 		} catch (error) {
 			console.error('[PersonalMatches] Error:', error)
 		} finally {

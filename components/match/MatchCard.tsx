@@ -46,9 +46,11 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 	const visibleParticipants = participants.slice(0, MAX_VISIBLE_AVATARS)
 	const extraCount = participants.length - MAX_VISIBLE_AVATARS
 
+	const isCancelled = match.status === 'cancelled'
+
 	return (
 		<>
-			<TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.9}>
+			<TouchableOpacity style={[styles.container, isCancelled && { opacity: 0.6 }]} onPress={onPress} activeOpacity={0.9}>
 				{/* Imagen + badges */}
 				<ImageBackground source={getSportImage(match.sport)} style={styles.imageContainer} imageStyle={styles.image}>
 					<View style={styles.imageOverlay} />
@@ -61,23 +63,33 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 
 						{/* Relación — derecha */}
 						<View style={styles.topRightBadgeContainer}>
-							{relation === 'created' && (
-								<View style={styles.createdBadge}>
-									<Ionicons name='star' size={12} color={colors.backgroundDark} />
-									<Text style={styles.relationText}>Creador</Text>
+							{/* Badge de cancelado — tiene prioridad sobre los demás */}
+							{match.status === 'cancelled' ? (
+								<View style={[styles.createdBadge, { backgroundColor: colors.error }]}>
+									<Ionicons name='close-circle' size={12} color='white' />
+									<Text style={[styles.relationText, { color: 'white' }]}>Cancelado</Text>
 								</View>
-							)}
-							{relation === 'joined' && (
-								<View style={styles.joinedBadge}>
-									<Ionicons name='people' size={12} color={colors.backgroundDark} />
-									<Text style={styles.relationText}>Unido</Text>
-								</View>
-							)}
-							{relation === 'history' && (
-								<View style={[styles.joinedBadge, { backgroundColor: colors.textSecondaryDark }]}>
-									<Ionicons name='time' size={12} color={colors.backgroundDark} />
-									<Text style={styles.relationText}>Finalizado</Text>
-								</View>
+							) : (
+								<>
+									{relation === 'created' && (
+										<View style={styles.createdBadge}>
+											<Ionicons name='star' size={12} color={colors.backgroundDark} />
+											<Text style={styles.relationText}>Creador</Text>
+										</View>
+									)}
+									{relation === 'joined' && (
+										<View style={styles.joinedBadge}>
+											<Ionicons name='people' size={12} color={colors.backgroundDark} />
+											<Text style={styles.relationText}>Unido</Text>
+										</View>
+									)}
+									{relation === 'history' && (
+										<View style={[styles.joinedBadge, { backgroundColor: colors.textSecondaryDark }]}>
+											<Ionicons name='time' size={12} color={colors.backgroundDark} />
+											<Text style={styles.relationText}>Finalizado</Text>
+										</View>
+									)}
+								</>
 							)}
 						</View>
 					</View>
