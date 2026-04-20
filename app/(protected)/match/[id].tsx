@@ -91,6 +91,7 @@ export default function MatchDetail() {
 			}
 		} catch (err) {
 			console.error('[MatchDetail] Error uniéndose:', err)
+			Alert.alert('Error', 'No se pudo unir al partido. Intentá de nuevo.')
 		} finally {
 			setActionLoading(false)
 		}
@@ -106,6 +107,7 @@ export default function MatchDetail() {
 			await loadMatch()
 		} catch (err) {
 			console.error('[MatchDetail] Error saliendo:', err)
+			Alert.alert('Error', 'No se pudo salir del partido. Intentá de nuevo.')
 		} finally {
 			setActionLoading(false)
 		}

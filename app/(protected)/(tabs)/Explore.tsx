@@ -11,7 +11,7 @@ import { MatchWithCreator } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
 import { router, useFocusEffect } from 'expo-router'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ActivityIndicator, FlatList, Keyboard, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -34,9 +34,9 @@ export default function ExploreScreen() {
 		}, [refreshMatches]),
 	)
 
-	const filteredMatches = filters.sport ? matches.filter((m) => m.sport === filters.sport) : matches
+	const filteredMatches = useMemo(() => (filters.sport ? matches.filter((m) => m.sport === filters.sport) : matches), [matches, filters.sport])
 
-	const handleMatchPress = (match: MatchWithCreator) => router.push(`/match/${match.id}`)
+	const handleMatchPress = useCallback((match: MatchWithCreator) => router.push(`/match/${match.id}`), [])
 
 	// ── Abrir modal: sincronizar draft con el estado actual ───────────────
 	const openModal = () => {
@@ -154,7 +154,7 @@ export default function ExploreScreen() {
 		</View>
 	)
 
-	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCardComponent match={item} onPress={() => handleMatchPress(item)} onJoin={() => handleMatchPress(item)} />, [])
+	const renderItem = useCallback(({ item }: { item: MatchWithCreator }) => <MatchCardComponent match={item} onPress={() => handleMatchPress(item)} onJoin={() => handleMatchPress(item)} />, [handleMatchPress])
 
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
