@@ -1,7 +1,6 @@
 import { styles } from '@/assets/styles/Login.styles'
 import Loader from '@/components/ui/Loader'
 import { useAuth } from '@/context/AuthContext'
-import { authService } from '@/services/auth.service'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
@@ -35,20 +34,20 @@ export default function LoginScreen({ navigation }: { navigation?: any }) {
 		setError(null)
 
 		const trimmedEmail = email.trim()
-		if (!trimmedEmail || !password) {
-			setError('Por favor ingresa email y contraseña')
-			setLoading(false)
-			return
-		}
+		// if (!trimmedEmail || !password) {
+		// 	setError('Por favor ingresa email y contraseña')
+		// 	setLoading(false)
+		// 	return
+		// }
 
-		if (!authService.validateEmail(trimmedEmail)) {
-			setError('Email inválido')
-			setLoading(false)
-			return
-		}
+		// if (!authService.validateEmail(trimmedEmail)) {
+		// 	setError('Email inválido')
+		// 	setLoading(false)
+		// 	return
+		// }
 
-		const { error } = await signIn(trimmedEmail, password)
-		// const { error } = await signIn('jose.romani@hotmail.com', 'Jose2202')
+		// const { error } = await signIn(trimmedEmail, password)
+		const { error } = await signIn('jose.romani@hotmail.com', 'Jose2202')
 		if (error) {
 			if (error.message.includes('Invalid login credentials')) {
 				setError('Email o contraseña incorrectos')

@@ -1,19 +1,12 @@
-import { supabase } from '@/lib/supabase'
+import { repositories } from '@/repositories'
+import type { RateInput } from '@/repositories/interfaces/IRatingRepository'
 
 export const ratingsService = {
-    rate(data: {
-        match_id: string
-        rated_user_id: string
-        rating: number
-        comment?: string
-    }) {
-        return supabase.from('match_ratings').insert(data)
-    },
+	rate(data: RateInput) {
+		return repositories.ratings.rate(data)
+	},
 
-    listForUser(userId: string) {
-        return supabase
-            .from('match_ratings')
-            .select('*')
-            .eq('rated_user_id', userId)
-    },
+	listForUser(userId: string) {
+		return repositories.ratings.listForUser(userId)
+	},
 }

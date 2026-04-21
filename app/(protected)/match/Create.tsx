@@ -3,8 +3,8 @@ import { Chip } from '@/components/ui/Chip'
 import { VenueZoneInput } from '@/components/ui/Venuezoneinput'
 import { useAuth } from '@/context/AuthContext'
 import { useVenueZone } from '@/hooks/useVenueZone'
-import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
+import { profilesService } from '@/services/profiles.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
@@ -91,12 +91,7 @@ export default function CreateMatchScreen() {
 			try {
 				setSearching(true)
 				const addedUserIds = confirmed.filter((p) => p.type === 'user').map((p) => (p as any).userId)
-				const { data } = await supabase
-					.from('profiles')
-					.select('id, full_name, avatar_url, skill_level')
-					.ilike('full_name', `%${query.trim()}%`)
-					.neq('id', user?.id ?? '')
-					.limit(5)
+				const data = await profilesService.searchByName(query, { excludeUserId: user?.id, limit: 5 })
 				setSearchResults((data || []).filter((u) => !addedUserIds.includes(u.id)))
 			} catch (err) {
 				console.error('[Create] búsqueda:', err)

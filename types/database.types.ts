@@ -385,3 +385,11 @@ export type NotificationSettings = {
 	notify_player_joined: boolean
 	notify_match_reminder: boolean
 }
+
+// Match listing filter types
+export type ZoneListFilter = { type: 'coordinates'; lng: number; lat: number; radiusKm: number } | { type: 'name'; zoneName: string }
+
+export interface MatchListFilters {
+	sport?: SportType
+	zone?: ZoneListFilter
+}

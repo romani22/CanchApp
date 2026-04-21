@@ -4,7 +4,6 @@ import { TeamView } from '@/components/match/Teamview'
 import Loader from '@/components/ui/Loader'
 import { levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
-import { supabase } from '@/lib/supabase'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
@@ -57,13 +56,8 @@ export default function MatchDetail() {
 
 	useEffect(() => {
 		if (!id) return
-		const channel = supabase
-			.channel(`match-detail-${id}`)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'match_participants', filter: `match_id=eq.${id}` }, () => loadMatch())
-			.subscribe()
-		return () => {
-			supabase.removeChannel(channel)
-		}
+		const subscription = matchParticipantsService.subscribe(id as string, () => loadMatch())
+		return () => subscription.unsubscribe()
 	}, [id, loadMatch])
 
 	// ── Join ──────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { styles } from '@/assets/styles/Register.styles'; // Importación de estilos externos
-import { supabase } from '@/lib/supabase'
 import { authService } from '@/services/auth.service'
+import { profilesService } from '@/services/profiles.service'
 import { colors } from '@/theme/colors'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -73,16 +73,11 @@ export default function Register() {
 			if (!userId) throw new Error('No se pudo obtener el usuario')
 
 			// 2️⃣ Actualizar perfil ya creado por el trigger
-			const { error: updateError } = await supabase
-				.from('profiles')
-				.update({
-					favorite_sports: selectedSports,
-					skill_level: level.toLowerCase(), // importante
-					zone,
-				})
-				.eq('id', userId)
-
-			if (updateError) throw updateError
+			await profilesService.updateProfile(userId, {
+				favorite_sports: selectedSports as any,
+				skill_level: level,
+				zone,
+			})
 
 			router.replace('/(protected)/(tabs)/Dashboard')
 		} catch (err: unknown) {
