@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "711473002214",
+    "project_id": "canchapp-85b3e",
+    "storage_bucket": "canchapp-85b3e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:711473002214:android:135b57eb2012a2d26fed27",
+        "android_client_info": {
+          "package_name": "com.romani22.canchapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBN8b4GdTqt6JU1KVdulyFQ2M6JExnnDnI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

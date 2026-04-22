@@ -167,4 +167,21 @@ export const styles = StyleSheet.create({
 		fontWeight: '600',
 		color: colors.primary,
 	},
+	biometricContainer: {
+		alignItems: 'center',
+		marginBottom: 24,
+	},
+	biometricButton: {
+		width: 64,
+		height: 64,
+		borderRadius: 32,
+		backgroundColor: colors.primary,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginBottom: 8,
+	},
+	biometricText: {
+		fontSize: 13,
+		color: colors.mutedForeground,
+	},
 })
