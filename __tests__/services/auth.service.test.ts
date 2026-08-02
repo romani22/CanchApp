@@ -19,7 +19,7 @@ jest.mock('@/lib/supabase', () => ({
   },
 }))
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const mockAuth = (jest.requireMock('@/lib/supabase') as { supabase: { auth: Record<string, jest.Mock> } }).supabase.auth
 
 // ────────────────────────────────────────────────────────────────────────────

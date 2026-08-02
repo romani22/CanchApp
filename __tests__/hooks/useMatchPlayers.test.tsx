@@ -18,7 +18,7 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'organizer-1' } }),
 }))
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const mockMatchPlayersService = (jest.requireMock('@/services/matchPlayers.service') as { matchPlayersService: Record<string, jest.Mock> }).matchPlayersService
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

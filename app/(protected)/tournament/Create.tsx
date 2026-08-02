@@ -1,3 +1,4 @@
+import { sports as allSports, sportsMaterialIcons } from '@/constants/matches'
 import { styles } from '@/assets/styles/Tournament.styles'
 import { colors } from '@/theme/colors'
 import { spacing } from '@/theme/spacing'
@@ -8,12 +9,9 @@ import { useState } from 'react'
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-const sports = [
-	{ id: 'futbol', label: 'Fútbol', icon: 'soccer' },
-	{ id: 'basquet', label: 'Básquet', icon: 'basketball' },
-	{ id: 'padel', label: 'Pádel', icon: 'tennis-ball' },
-	{ id: 'voley', label: 'Voley', icon: 'volleyball' },
-]
+// Derivado de la lista canónica: la copia local que había acá se había quedado
+// sin tenis. Conserva los iconos MaterialCommunityIcons de esta pantalla.
+const sports = allSports.map((s) => ({ id: s.key, label: s.label, icon: sportsMaterialIcons[s.key] }))
 
 const formats = [
 	{ id: 'eliminatoria', title: 'Eliminatoria', desc: 'Torneo de eliminación directa.', icon: 'sitemap' },

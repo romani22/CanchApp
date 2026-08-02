@@ -1,6 +1,6 @@
 import { styles } from '@/assets/styles/Match.styles'
 import ParticipantsMatch from '@/components/match/ParticipantsMatch'
-import { TeamView } from '@/components/match/Teamview'
+import { TeamView } from '@/components/match/TeamView'
 import Loader from '@/components/ui/Loader'
 import { levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
@@ -8,8 +8,8 @@ import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
-import { TeamSlot } from '@/types/database.types'
-import { getSportImage } from '@/Utils/sportImage'
+import { MatchWithCreator, TeamSlot } from '@/types/database.types'
+import { getSportImage } from '@/utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { format, parseISO } from 'date-fns'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
@@ -21,7 +21,7 @@ export default function MatchDetail() {
 	const { id } = useLocalSearchParams()
 	const { user } = useAuth()
 
-	const [match, setMatch] = useState<any>(null)
+	const [match, setMatch] = useState<MatchWithCreator | null>(null)
 	const [loading, setLoading] = useState(true)
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
@@ -62,7 +62,7 @@ export default function MatchDetail() {
 
 	// ── Join ──────────────────────────────────────────────────────────────
 	const handleJoinPress = () => {
-		if (!user || !isOpen || isFull || isParticipant) return
+		if (!match || !user || !isOpen || isFull || isParticipant) return
 		if (match.team_mode === 'two_teams') {
 			setTeamPickerVisible(true)
 		} else {
@@ -161,13 +161,13 @@ export default function MatchDetail() {
 	const isOpen = match.status === 'open'
 	const isCancelled = match.status === 'cancelled'
 	const isCreator = match.creator_id === user?.id
-	const isParticipant = match.participants?.some((p: any) => p.user_id === user?.id) ?? false
+	const isParticipant = match.participants?.some((p) => p.user_id === user?.id) ?? false
 	const hasTeams = match.team_mode === 'two_teams'
 	const matchDate = parseISO(match.starts_at)
 
 	const perTeam = Math.floor(match.total_players / 2)
-	const teamAFull = match.participants?.filter((p: any) => p.team_slot === 'A').length >= perTeam
-	const teamBFull = match.participants?.filter((p: any) => p.team_slot === 'B').length >= perTeam
+	const teamAFull = (match.participants?.filter((p) => p.team_slot === 'A').length ?? 0) >= perTeam
+	const teamBFull = (match.participants?.filter((p) => p.team_slot === 'B').length ?? 0) >= perTeam
 
 	return (
 		<View style={styles.container}>

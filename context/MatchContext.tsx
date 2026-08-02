@@ -1,3 +1,4 @@
+import { parseCoords } from '@/hooks/useVenueZone'
 import { ZoneListFilter, matchesService } from '@/services/matches.service'
 import { MatchWithCreator, SportType } from '@/types/database.types'
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
@@ -56,19 +57,28 @@ export function MatchProvider({ children }: { children: React.ReactNode }) {
 		isAuthenticatedRef.current = isAuthenticated
 	}, [isAuthenticated])
 
-	// Cargar la zona del perfil al autenticarse
+	// Cargar la zona del perfil al autenticarse y cuando el usuario la cambie.
+	//
+	// Antes dependía sólo de profile?.id, así que editar la zona en el perfil no
+	// refrescaba el filtro hasta reiniciar la app. Ahora escucha los campos que
+	// realmente lee. Son strings (Supabase entrega POINT como texto), así que son
+	// dependencias estables y no disparan el efecto en cada render.
 	useEffect(() => {
-		if (!profile) return
-		const coords = profile.zone_coordinates as { x: number; y: number } | null
-		if (coords && profile.zone) {
-			setActiveZone({
-				label: profile.zone,
-				lng: coords.x,
-				lat: coords.y,
-				radiusKm: 20,
-			})
-		}
-	}, [profile?.id])
+		if (!profile?.zone) return
+
+		// parseCoords, no un cast: zone_coordinates llega como "(lon,lat)". Con el cast
+		// el string pasaba el chequeo de truthiness pero .x/.y eran undefined, y el
+		// filtro de zona por defecto quedaba con lng/lat undefined.
+		const coords = parseCoords(profile.zone_coordinates)
+		if (!coords) return
+
+		setActiveZone({
+			label: profile.zone,
+			lng: coords.x,
+			lat: coords.y,
+			radiusKm: 20,
+		})
+	}, [profile?.id, profile?.zone, profile?.zone_coordinates])
 
 	// fetchMatches no tiene dependencias variables — siempre lee desde los refs
 	// Esto garantiza que refreshMatches() (capturado en cualquier closure)

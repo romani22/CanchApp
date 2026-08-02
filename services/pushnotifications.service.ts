@@ -2,17 +2,8 @@ import { repositories } from '@/repositories'
 import type { NotificationType } from '@/types/database.types'
 import Constants from 'expo-constants'
 import * as Device from 'expo-device'
-import * as Notifications from 'expo-notifications'
+import type * as NotificationsType from 'expo-notifications'
 import { Platform } from 'react-native'
-
-// Configuración de comportamiento de notificaciones
-Notifications.setNotificationHandler({
-	handleNotification: async () => ({
-		shouldShowAlert: true,
-		shouldPlaySound: true,
-		shouldSetBadge: true,
-	}),
-})
 
 export interface NotificationData {
 	match_id?: string
@@ -31,13 +22,37 @@ export interface PushNotificationConfig {
 	channelId?: string
 }
 
+const isExpoGo = Constants.executionEnvironment === 'storeClient'
+
+// En Expo Go nunca se llama require(), así DevicePushTokenAutoRegistration no se ejecuta
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const getNotifications = (): typeof NotificationsType => require('expo-notifications')
+
+if (!isExpoGo) {
+	getNotifications().setNotificationHandler({
+		handleNotification: async () => ({
+			shouldShowAlert: true,
+			shouldShowBanner: true,
+			shouldShowList: true,
+			shouldPlaySound: true,
+			shouldSetBadge: true,
+		}),
+	})
+}
+
 export const pushNotificationService = {
 	async registerForPushNotifications(): Promise<string | null> {
 		try {
+			if (isExpoGo) {
+				return null
+			}
+
 			if (!Device.isDevice) {
 				console.warn('Push notifications only work on physical devices')
 				return null
 			}
+
+			const Notifications = getNotifications()
 
 			const { status: existingStatus } = await Notifications.getPermissionsAsync()
 			let finalStatus = existingStatus
@@ -94,7 +109,6 @@ export const pushNotificationService = {
 			const platform = Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? ('android' as const) : ('web' as const)
 			const deviceName = Device.deviceName || `${Platform.OS} Device`
 			await repositories.pushTokens.save(userId, token, platform, deviceName)
-			console.log('Push token saved successfully')
 		} catch (error) {
 			console.error('Error saving push token:', error)
 			throw error
@@ -104,7 +118,6 @@ export const pushNotificationService = {
 	async removePushToken(userId: string): Promise<void> {
 		try {
 			await repositories.pushTokens.remove(userId)
-			console.log('Push token removed successfully')
 		} catch (error) {
 			console.error('Error removing push token:', error)
 			throw error
@@ -112,7 +125,9 @@ export const pushNotificationService = {
 	},
 
 	async sendLocalNotification(config: PushNotificationConfig): Promise<void> {
+		if (isExpoGo) return
 		try {
+			const Notifications = getNotifications()
 			await Notifications.scheduleNotificationAsync({
 				content: { title: config.title, body: config.body, data: config.data || {}, sound: config.sound !== false, priority: config.priority || 'high' },
 				trigger: null,
@@ -123,6 +138,8 @@ export const pushNotificationService = {
 	},
 
 	async scheduleLocalNotification(config: PushNotificationConfig, triggerDate: Date): Promise<string> {
+		if (isExpoGo) return ''
+		const Notifications = getNotifications()
 		try {
 			const seconds = Math.max(0, Math.floor((triggerDate.getTime() - Date.now()) / 1000))
 			const content = { title: config.title, body: config.body, data: config.data || {}, sound: config.sound !== false, priority: config.priority || 'high' }
@@ -138,6 +155,9 @@ export const pushNotificationService = {
 					trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: triggerDate },
 				})
 			} catch {
+				// Fallback intencional, no un error tragado: algunas plataformas y
+				// versiones no aceptan el trigger por DATE, así que se reintenta con
+				// TIME_INTERVAL. Si este segundo también falla, propaga.
 				identifier = await Notifications.scheduleNotificationAsync({
 					content,
 					trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds },
@@ -151,12 +171,10 @@ export const pushNotificationService = {
 	},
 
 	async scheduleMatchReminder(matchId: string, matchTitle: string, venueName: string, startsAt: Date): Promise<string | null> {
+		if (isExpoGo) return null
 		try {
 			const reminderTime = new Date(startsAt.getTime() - 11 * 60 * 1000)
-			if (reminderTime <= new Date()) {
-				console.log('Match starts too soon to schedule reminder')
-				return null
-			}
+			if (reminderTime <= new Date()) return null
 			const identifier = await this.scheduleLocalNotification(
 				{
 					title: '⏰ Tu partido comienza pronto',
@@ -166,7 +184,6 @@ export const pushNotificationService = {
 				},
 				reminderTime,
 			)
-			console.log('Match reminder scheduled:', identifier)
 			return identifier
 		} catch (error) {
 			console.error('Error scheduling match reminder:', error)
@@ -175,12 +192,13 @@ export const pushNotificationService = {
 	},
 
 	async cancelMatchReminder(matchId: string): Promise<void> {
+		if (isExpoGo) return
 		try {
+			const Notifications = getNotifications()
 			const scheduled = await Notifications.getAllScheduledNotificationsAsync()
 			const reminder = scheduled.find((n) => n.content.data?.match_id === matchId && n.content.data?.type === 'match_reminder')
 			if (reminder) {
 				await Notifications.cancelScheduledNotificationAsync(reminder.identifier)
-				console.log('Match reminder cancelled for match:', matchId)
 			}
 		} catch (error) {
 			console.error('Error cancelling match reminder:', error)
@@ -188,24 +206,27 @@ export const pushNotificationService = {
 	},
 
 	async cancelScheduledNotification(identifier: string): Promise<void> {
+		if (isExpoGo) return
 		try {
-			await Notifications.cancelScheduledNotificationAsync(identifier)
+			await getNotifications().cancelScheduledNotificationAsync(identifier)
 		} catch (error) {
 			console.error('Error cancelling notification:', error)
 		}
 	},
 
 	async cancelAllScheduledNotifications(): Promise<void> {
+		if (isExpoGo) return
 		try {
-			await Notifications.cancelAllScheduledNotificationsAsync()
+			await getNotifications().cancelAllScheduledNotificationsAsync()
 		} catch (error) {
 			console.error('Error cancelling all notifications:', error)
 		}
 	},
 
 	async getBadgeCount(): Promise<number> {
+		if (isExpoGo) return 0
 		try {
-			return await Notifications.getBadgeCountAsync()
+			return await getNotifications().getBadgeCountAsync()
 		} catch (error) {
 			console.error('Error getting badge count:', error)
 			return 0
@@ -213,26 +234,28 @@ export const pushNotificationService = {
 	},
 
 	async setBadgeCount(count: number): Promise<void> {
+		if (isExpoGo) return
 		try {
-			await Notifications.setBadgeCountAsync(count)
+			await getNotifications().setBadgeCountAsync(count)
 		} catch (error) {
 			console.error('Error setting badge count:', error)
 		}
 	},
 
-	addNotificationReceivedListener(callback: (notification: Notifications.Notification) => void): ReturnType<typeof Notifications.addNotificationReceivedListener> {
-		return Notifications.addNotificationReceivedListener(callback)
+	addNotificationReceivedListener(callback: (notification: NotificationsType.Notification) => void): { remove: () => void } {
+		if (isExpoGo) return { remove: () => {} }
+		return getNotifications().addNotificationReceivedListener(callback)
 	},
 
-	addNotificationResponseReceivedListener(
-		callback: (response: Notifications.NotificationResponse) => void,
-	): ReturnType<typeof Notifications.addNotificationResponseReceivedListener> {
-		return Notifications.addNotificationResponseReceivedListener(callback)
+	addNotificationResponseReceivedListener(callback: (response: NotificationsType.NotificationResponse) => void): { remove: () => void } {
+		if (isExpoGo) return { remove: () => {} }
+		return getNotifications().addNotificationResponseReceivedListener(callback)
 	},
 
-	async getAllScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+	async getAllScheduledNotifications(): Promise<NotificationsType.NotificationRequest[]> {
+		if (isExpoGo) return []
 		try {
-			return await Notifications.getAllScheduledNotificationsAsync()
+			return await getNotifications().getAllScheduledNotificationsAsync()
 		} catch (error) {
 			console.error('Error getting scheduled notifications:', error)
 			return []
@@ -240,8 +263,9 @@ export const pushNotificationService = {
 	},
 
 	async checkPermissions(): Promise<boolean> {
+		if (isExpoGo) return false
 		try {
-			const { status } = await Notifications.getPermissionsAsync()
+			const { status } = await getNotifications().getPermissionsAsync()
 			return status === 'granted'
 		} catch (error) {
 			console.error('Error checking notification permissions:', error)
@@ -250,8 +274,9 @@ export const pushNotificationService = {
 	},
 
 	async dismissAllNotifications(): Promise<void> {
+		if (isExpoGo) return
 		try {
-			await Notifications.dismissAllNotificationsAsync()
+			await getNotifications().dismissAllNotificationsAsync()
 		} catch (error) {
 			console.error('Error dismissing notifications:', error)
 		}

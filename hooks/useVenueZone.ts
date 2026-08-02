@@ -22,7 +22,22 @@ export type VenueZoneState = {
 	onSelect: (item: LocalidadSuggestion) => void
 	onDetectGPS: () => Promise<void>
 	onDismiss: () => void
+	/**
+	 * Vuelve el estado a un valor concreto. Para descartar cambios: el efecto de
+	 * sincronización sólo reacciona a que cambien los valores iniciales, y al
+	 * descartar esos siguen siendo los mismos.
+	 */
+	reset: (zone: string, zoneCoords: { x: number; y: number } | null) => void
 }
+
+/**
+ * Re-export de la normalización POINT que vive en la capa de repositorios.
+ *
+ * Desde que los repositorios normalizan al leer, los valores que llegan a la UI ya
+ * son { x, y }. Se mantiene expuesto porque es idempotente y sirve de red para
+ * cualquier dato que llegue por fuera de esa capa.
+ */
+export { parsePoint as parseCoords } from '@/repositories/coords'
 
 const GEOREF_URL = 'https://apis.datos.gob.ar/georef/api'
 
@@ -145,6 +160,14 @@ export function useVenueZone(initialZone = '', initialCoords: { x: number; y: nu
 
 	const onDismiss = useCallback(() => setSuggestions([]), [])
 
+	const reset = useCallback((zone: string, zoneCoords: { x: number; y: number } | null) => {
+		setInputText(zone)
+		setCoords(zoneCoords)
+		setIsDirty(false)
+		setSuggestions([])
+		if (timer.current) clearTimeout(timer.current)
+	}, [])
+
 	useEffect(
 		() => () => {
 			if (timer.current) clearTimeout(timer.current)
@@ -152,5 +175,5 @@ export function useVenueZone(initialZone = '', initialCoords: { x: number; y: nu
 		[],
 	)
 
-	return { inputText, suggestions, coords, searching, isDirty, onChangeText, onSelect, onDetectGPS, onDismiss }
+	return { inputText, suggestions, coords, searching, isDirty, onChangeText, onSelect, onDetectGPS, onDismiss, reset }
 }

@@ -39,12 +39,6 @@ export const styles = StyleSheet.create({
     formSection: {
         gap: spacing.md,
     },
-    inputLabel: {
-        ...typography.bodySmall,
-        color: colors.textPrimaryDark,
-        fontWeight: '600',
-        marginTop: spacing.sm,
-    },
     input: {
         backgroundColor: colors.surfaceDark,
         borderRadius: borderRadius.xl,
@@ -69,59 +63,8 @@ export const styles = StyleSheet.create({
         marginLeft: spacing.sm,
         color: colors.textPrimaryDark,
     },
-    sportsContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing.sm,
-        marginTop: spacing.xs,
-    },
-    sportChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surfaceDark,
-        borderRadius: borderRadius.xl,
-        borderWidth: 1,
-        borderColor: colors.borderDark,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        gap: spacing.xs,
-    },
-    sportChipActive: {
-        backgroundColor: colors.primary,
-        borderColor: colors.primary,
-    },
-    sportChipText: {
-        color: colors.textPrimaryDark,
-        fontWeight: '600',
-    },
-    sportChipTextActive: {
-        color: colors.backgroundDark, // Texto oscuro sobre fondo verde neón
-    },
-    levelSelector: {
-        flexDirection: 'row',
-        backgroundColor: colors.surfaceDark,
-        borderRadius: borderRadius.xl,
-        padding: 4,
-        marginTop: spacing.xs,
-    },
-    levelOption: {
-        flex: 1,
-        paddingVertical: 12,
-        alignItems: 'center',
-        borderRadius: borderRadius.lg,
-    },
-    levelOptionActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)', // Un leve resalte para el nivel
-        borderWidth: 1,
-        borderColor: colors.borderDark,
-    },
-    levelText: {
-        color: colors.textSecondaryDark,
-        fontWeight: '600',
-    },
-    levelTextActive: {
-        color: colors.primary, // El nivel seleccionado resalta en verde
-    },
+    // Los estilos de deportes y nivel se quitaron junto con esos campos: ahora los
+    // pide el onboarding, que usa components/ui/SportLevelEditor.tsx.
     submitButton: {
         backgroundColor: colors.primary,
         borderRadius: borderRadius.full,

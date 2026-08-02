@@ -1,9 +1,10 @@
 import { supabase } from '@/lib/supabase'
 import type { InsertMatch, Match, MatchListFilters, MatchUpdate, MatchWithCreator } from '@/types/database.types'
-import { format } from 'date-fns'
+import { parseRowPoints, parseRowsPoints, serializePoint } from '../coords'
 import type { IMatchRepository } from '../interfaces/IMatchRepository'
 
-// Fragmento reutilizable para participantes con skill_level incluido
+// Fragmento reutilizable para participantes. Trae sport_levels completo: quien
+// lo muestre elige el nivel del deporte del partido con levelForSport().
 const PARTICIPANTS_SELECT = `
 	id,
 	user_id,
@@ -16,7 +17,7 @@ const PARTICIPANTS_SELECT = `
 		avatar_url,
 		rating,
 		elo_rating,
-		skill_level
+		sport_levels
 	)
 `
 
@@ -27,14 +28,25 @@ const PARTICIPANTS_SELECT = `
 function serializeMatchCoords(data: Record<string, unknown>): Record<string, unknown> {
 	const result = { ...data }
 	if ('venue_coordinates' in result) {
-		const coords = result.venue_coordinates as { x?: number; y?: number } | null | undefined
-		if (coords?.x != null && coords?.y != null) {
-			result.venue_coordinates = `(${coords.x},${coords.y})`
-		} else {
-			result.venue_coordinates = null
-		}
+		result.venue_coordinates = serializePoint(result.venue_coordinates)
 	}
 	return result
+}
+
+/**
+ * Normaliza venue_coordinates al leer, para que el tipo { x, y } sea cierto de acá
+ * hacia adentro. Sin esto llega el string "(x,y)" y cualquier reenvío a un update
+ * lo serializa a NULL. Ver repositories/coords.ts.
+ *
+ * Preservan null para no confundir "hubo error" con "lista vacía".
+ */
+function parseMatchRows<T>(rows: unknown): T[] | null {
+	if (!rows) return null
+	return parseRowsPoints(rows as Record<string, unknown>[], 'venue_coordinates') as unknown as T[]
+}
+
+function parseMatchRow<T>(row: unknown): T | null {
+	return parseRowPoints(row as Record<string, unknown> | null, 'venue_coordinates') as unknown as T | null
 }
 
 export class SupabaseMatchRepository implements IMatchRepository {
@@ -64,7 +76,7 @@ export class SupabaseMatchRepository implements IMatchRepository {
 			if (filters.sport) query = query.eq('sport', filters.sport)
 
 			const { data, error } = await query
-			return { data: data as unknown as MatchWithCreator[] | null, error: error ?? null }
+			return { data: parseMatchRows<MatchWithCreator>(data), error: error ?? null }
 		}
 
 		if (filters?.zone?.type === 'name') {
@@ -79,7 +91,7 @@ export class SupabaseMatchRepository implements IMatchRepository {
 			if (filters.sport) query = query.eq('sport', filters.sport)
 
 			const { data, error } = await query
-			return { data: data as unknown as MatchWithCreator[] | null, error: error ?? null }
+			return { data: parseMatchRows<MatchWithCreator>(data), error: error ?? null }
 		}
 
 		let query = supabase
@@ -91,7 +103,7 @@ export class SupabaseMatchRepository implements IMatchRepository {
 		if (filters?.sport) query = query.eq('sport', filters.sport)
 
 		const { data, error } = await query.order('starts_at', { ascending: true })
-		return { data: data as unknown as MatchWithCreator[] | null, error: error ?? null }
+		return { data: parseMatchRows<MatchWithCreator>(data), error: error ?? null }
 	}
 
 	async getById(matchId: string): Promise<{ data: MatchWithCreator | null; error: Error | null }> {
@@ -101,7 +113,7 @@ export class SupabaseMatchRepository implements IMatchRepository {
 			.eq('id', matchId)
 			.single()
 
-		return { data: data as unknown as MatchWithCreator | null, error: error ?? null }
+		return { data: parseMatchRow<MatchWithCreator>(data), error: error ?? null }
 	}
 
 	async getCreatedByUser(userId: string): Promise<{ data: MatchWithCreator[] | null; error: Error | null }> {
@@ -111,7 +123,7 @@ export class SupabaseMatchRepository implements IMatchRepository {
 			.eq('creator_id', userId)
 			.order('starts_at', { ascending: true })
 
-		return { data: data as unknown as MatchWithCreator[] | null, error: error ?? null }
+		return { data: parseMatchRows<MatchWithCreator>(data), error: error ?? null }
 	}
 
 	async getJoined(userId: string): Promise<{ data: MatchWithCreator[] | null; error: Error | null }> {
@@ -121,14 +133,14 @@ export class SupabaseMatchRepository implements IMatchRepository {
 			.eq('participants.user_id', userId)
 			.order('starts_at', { ascending: true })
 
-		return { data: data as unknown as MatchWithCreator[] | null, error: error ?? null }
+		return { data: parseMatchRows<MatchWithCreator>(data), error: error ?? null }
 	}
 
 	async getRecommended(limit = 5): Promise<Match[]> {
 		const now = new Date().toISOString()
 		const { data, error } = await supabase.from('matches').select('*').eq('status', 'open').gte('starts_at', now).order('starts_at', { ascending: true }).limit(limit)
 		if (error) throw error
-		return data ?? []
+		return parseMatchRows<Match>(data) ?? []
 	}
 
 	async getNextForUser(userId: string): Promise<{ data: Match | null; error: null }> {
@@ -147,14 +159,14 @@ export class SupabaseMatchRepository implements IMatchRepository {
 			})
 			.sort((a, b) => a.starts_at.localeCompare(b.starts_at))
 
-		return { data: upcoming[0] ?? null, error: null }
+		return { data: parseMatchRow<Match>(upcoming[0] ?? null), error: null }
 	}
 
 	async create(match: InsertMatch): Promise<Match> {
 		const payload = serializeMatchCoords(match as Record<string, unknown>)
 		const { data, error } = await supabase.from('matches').insert(payload).select().single()
 		if (error) throw error
-		return data
+		return parseMatchRow<Match>(data) as Match
 	}
 
 	async update(matchId: string, data: MatchUpdate): Promise<void> {

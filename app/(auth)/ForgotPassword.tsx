@@ -39,7 +39,7 @@ export default function ForgotPassword() {
 			return
 		}
 
-		Alert.alert('Éxito', 'Te enviamos un enlace para restablecer tu contraseña')
+		Alert.alert('Éxito', 'Te enviamos un enlace para restablecer tu contraseña', [{ text: 'OK', onPress: () => router.replace('/(auth)/Login') }])
 	}
 
 	return (

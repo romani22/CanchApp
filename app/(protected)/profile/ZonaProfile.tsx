@@ -1,46 +1,27 @@
 import { styles } from '@/assets/styles/Profile.styles'
-import { useLocation } from '@/hooks/useLocation'
+import { VenueZoneInput } from '@/components/ui/VenueZoneInput'
+import { VenueZoneState } from '@/hooks/useVenueZone'
 import { colors } from '@/theme/colors'
-import { borderRadius, spacing } from '@/theme/spacing'
+import { spacing } from '@/theme/spacing'
 import { typography } from '@/theme/typography'
 import { Ionicons } from '@expo/vector-icons'
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-
-type Coords = { x: number; y: number }
+import { StyleSheet, Text, View } from 'react-native'
 
 type Props = {
-	zone: string | null
-	zoneCoordinates: Coords | string | null
+	/** Estado del buscador de localidades, creado con useVenueZone() en la pantalla. */
+	venueZone: VenueZoneState
 	isEditing: boolean
-	onChangeZone: (zone: string, coordinates: Coords) => void
 }
 
 /**
- * Supabase devuelve el tipo POINT como string "(longitud,latitud)".
- * Esta función lo normaliza a { x, y }.
+ * Zona de juego del perfil.
+ *
+ * En modo edición usa el mismo buscador de localidades que el alta de partidos y el
+ * onboarding. Antes sólo ofrecía el botón de GPS, así que sin ubicación disponible
+ * no había forma de cambiar la zona.
  */
-function parseCoords(raw: Coords | string | null): Coords | null {
-	if (!raw) return null
-	if (typeof raw === 'object') return raw
-	const match = raw.match(/\(?([-\d.]+),([-\d.]+)\)?/)
-	if (!match) return null
-	return { x: parseFloat(match[1]), y: parseFloat(match[2]) }
-}
-
-function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) {
-	const { detect, loading } = useLocation()
-	const coords = parseCoords(zoneCoordinates)
-	const hasLocation = !!zone
-
-	const handleDetectLocation = async () => {
-		if (!isEditing) return
-		const result = await detect()
-		if (!result) {
-			Alert.alert('Sin acceso a ubicación', 'Para detectar tu zona necesitamos acceso a tu ubicación. Podés habilitarlo desde Ajustes del dispositivo.', [{ text: 'Entendido' }])
-			return
-		}
-		onChangeZone(result.zone, result.coordinates)
-	}
+function ZonaProfile({ venueZone, isEditing }: Props) {
+	const hasLocation = !!venueZone.inputText.trim()
 
 	return (
 		<View style={styles.section}>
@@ -55,39 +36,41 @@ function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) 
 						<Text style={styles.zoneTitle}>Zona de juego</Text>
 						<Text style={styles.zoneHint}>{hasLocation ? 'Se usa para mostrarte partidos cercanos' : 'Sin zona configurada aún'}</Text>
 					</View>
-
-					{isEditing && (
-						<TouchableOpacity style={localStyles.detectButton} onPress={handleDetectLocation} disabled={loading}>
-							{loading ? (
-								<ActivityIndicator size='small' color={colors.backgroundDark} />
-							) : (
-								<>
-									<Ionicons name='navigate' size={14} color={colors.backgroundDark} />
-									<Text style={localStyles.detectButtonText}>{hasLocation ? 'Actualizar' : 'Detectar'}</Text>
-								</>
-							)}
-						</TouchableOpacity>
-					)}
 				</View>
 
-				{/* Localidad detectada */}
-				{hasLocation ? (
+				{isEditing ? (
+					<View style={localStyles.editor}>
+						<VenueZoneInput
+							value={venueZone.inputText}
+							coords={venueZone.coords}
+							suggestions={venueZone.suggestions}
+							searching={venueZone.searching}
+							isDirty={venueZone.isDirty}
+							onChangeText={venueZone.onChangeText}
+							onSelect={venueZone.onSelect}
+							onDetectGPS={venueZone.onDetectGPS}
+							onDismiss={venueZone.onDismiss}
+							placeholder='Buscá tu ciudad o localidad'
+							confirmedHint='Ubicación confirmada — vas a ver los partidos en un radio de 20 km'
+						/>
+					</View>
+				) : hasLocation ? (
 					<View style={localStyles.zoneResult}>
 						<View style={localStyles.zoneNameRow}>
 							<Ionicons name='location-outline' size={16} color={colors.primary} />
 							<Text style={localStyles.zoneName} numberOfLines={1}>
-								{zone}
+								{venueZone.inputText}
 							</Text>
 						</View>
-						{coords && (
+						{venueZone.coords && (
 							<View style={localStyles.gpsConfirmed}>
 								<Ionicons name='checkmark-circle' size={14} color={colors.success} />
-								<Text style={localStyles.gpsConfirmedText}>GPS confirmado · radio de búsqueda 20 km</Text>
+								<Text style={localStyles.gpsConfirmedText}>Ubicación confirmada · radio de búsqueda 20 km</Text>
 							</View>
 						)}
 					</View>
 				) : (
-					!isEditing && <Text style={localStyles.emptyHint}>Activá el modo edición para configurar tu zona y ver partidos cercanos.</Text>
+					<Text style={localStyles.emptyHint}>Activá el modo edición para configurar tu zona y ver partidos cercanos.</Text>
 				)}
 			</View>
 		</View>
@@ -95,19 +78,8 @@ function ZonaProfile({ zone, zoneCoordinates, isEditing, onChangeZone }: Props) 
 }
 
 const localStyles = StyleSheet.create({
-	detectButton: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 4,
-		backgroundColor: colors.primary,
-		paddingHorizontal: spacing.md,
-		paddingVertical: spacing.sm,
-		borderRadius: borderRadius.full,
-	},
-	detectButtonText: {
-		...typography.labelSmall,
-		color: colors.backgroundDark,
-		fontWeight: '700',
+	editor: {
+		marginTop: spacing.md,
 	},
 	zoneResult: {
 		marginTop: spacing.md,

@@ -40,9 +40,9 @@ jest.mock('@/lib/supabase', () => ({
 }))
 
 // Accedemos a los mocks via requireMock para poder configurarlos en cada test
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const mockAuthService = (jest.requireMock('@/services/auth.service') as { authService: Record<string, jest.Mock> }).authService
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const mockProfilesService = (jest.requireMock('@/services/profiles.service') as { profilesService: Record<string, jest.Mock> }).profilesService
 // (pushNotificationService está mockeado pero no necesitamos configurarlo en estos tests)
 

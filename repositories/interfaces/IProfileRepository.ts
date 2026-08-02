@@ -14,5 +14,5 @@ export interface IProfileRepository {
 	update(userId: string, data: Partial<Profile>): Promise<Profile>
 	listBySport(sport: SportType): Promise<Profile[]>
 	getUserStats(userId: string): Promise<UserStats | null>
-	searchByName(query: string, options?: { excludeUserId?: string; limit?: number }): Promise<Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'skill_level'>[]>
+	searchByName(query: string, options?: { excludeUserId?: string; limit?: number }): Promise<Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'sport_levels'>[]>
 }

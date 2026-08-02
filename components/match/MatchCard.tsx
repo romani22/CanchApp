@@ -1,13 +1,15 @@
 import { styles } from '@/assets/styles/MatchCard.styles'
+import { ParticipantModal, ParticipantSummary } from '@/components/match/ParticipantModal'
+import { levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
 import { colors } from '@/theme/colors'
-import { MatchWithCreator, SkillLevel } from '@/types/database.types'
-import { getSportImage } from '@/Utils/sportImage'
+import { MatchWithCreator } from '@/types/database.types'
+import { getSportImage } from '@/utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { format, isToday, isTomorrow, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useState } from 'react'
-import { Image, ImageBackground, Modal, Text, TouchableOpacity, View } from 'react-native'
+import { Image, ImageBackground, Text, TouchableOpacity, View } from 'react-native'
 
 interface MatchCardProps {
 	match: MatchWithCreator
@@ -16,17 +18,11 @@ interface MatchCardProps {
 	onJoin?: () => void
 }
 
-const levelLabels: Record<SkillLevel, string> = {
-	principiante: 'Principiante',
-	intermedio: 'Intermedio',
-	avanzado: 'Avanzado',
-}
-
 const MAX_VISIBLE_AVATARS = 4
 
 export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCardProps) {
 	const { user } = useAuth()
-	const [selectedParticipant, setSelectedParticipant] = useState<any>(null)
+	const [selectedParticipant, setSelectedParticipant] = useState<ParticipantSummary | null>(null)
 	const matchDate = parseISO(match.starts_at)
 
 	const formatMatchDate = () => {
@@ -176,27 +172,7 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 				</View>
 			</TouchableOpacity>
 
-			{/* Modal de participante */}
-			<Modal visible={!!selectedParticipant} transparent animationType='fade' onRequestClose={() => setSelectedParticipant(null)}>
-				<TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setSelectedParticipant(null)}>
-					<View style={{ width: 280, backgroundColor: colors.surfaceDark, borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: colors.borderDark }}>
-						{selectedParticipant?.user?.avatar_url ? (
-							<Image source={{ uri: selectedParticipant.user.avatar_url }} style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 14, borderWidth: 3, borderColor: colors.primary }} />
-						) : (
-							<View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.surfaceDark, borderWidth: 3, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-								<Ionicons name='person' size={36} color={colors.textSecondaryDark} />
-							</View>
-						)}
-						<Text style={{ color: colors.textPrimaryDark, fontSize: 18, fontWeight: '600' }}>{selectedParticipant?.user?.full_name || 'Invitado'}</Text>
-						<Text style={{ color: colors.textSecondaryDark, marginTop: 4, fontSize: 13 }}>{selectedParticipant?.user_id ? 'Jugador registrado' : 'Invitado'}</Text>
-						{selectedParticipant?.user?.skill_level && (
-							<View style={{ marginTop: 10, backgroundColor: `${colors.primary}20`, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 }}>
-								<Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{levelLabels[selectedParticipant.user.skill_level as SkillLevel]}</Text>
-							</View>
-						)}
-					</View>
-				</TouchableOpacity>
-			</Modal>
+			<ParticipantModal participant={selectedParticipant} sport={match.sport} onClose={() => setSelectedParticipant(null)} />
 		</>
 	)
 }

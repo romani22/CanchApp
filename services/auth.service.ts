@@ -56,4 +56,8 @@ export const authService = {
 	async updatePassword(newPassword: string): Promise<{ error: Error | null }> {
 		return repositories.auth.updatePassword(newPassword)
 	},
+
+	async signInWithGoogle(): Promise<{ error: Error | null }> {
+		return repositories.auth.signInWithGoogle()
+	},
 }

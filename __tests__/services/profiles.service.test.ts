@@ -9,6 +9,7 @@ function makeBuilder(result: { data?: unknown; error?: unknown } = {}) {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     contains: jest.fn().mockReturnThis(),
+    not: jest.fn().mockReturnThis(),
     update: jest.fn().mockReturnThis(),
     single: jest.fn().mockResolvedValue(resolved),
     maybeSingle: jest.fn().mockResolvedValue(resolved),
@@ -28,7 +29,7 @@ jest.mock('@/lib/supabase', () => {
   }
 })
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const supabaseMock = jest.requireMock('@/lib/supabase') as { __mockFrom: jest.Mock }
 const mockFrom = supabaseMock.__mockFrom
 
@@ -39,8 +40,7 @@ const profileFixture = {
   email: 'maria@example.com',
   avatar_url: null,
   sport: 'futbol',
-  favorite_sports: ['futbol', 'tenis'],
-  skill_level: 'intermedio',
+  sport_levels: { futbol: 'intermedio', tenis: 'principiante' },
   zone: 'Córdoba',
   zone_coordinates: null,
   rating: 4.5,
@@ -145,53 +145,63 @@ describe('profilesService', () => {
     })
   })
 
-  // ── addFavoriteSport ───────────────────────────────────────────────────────
-  describe('addFavoriteSport()', () => {
-    it('agrega un deporte nuevo a la lista de favoritos', async () => {
-      const builder = makeBuilder({ data: { ...profileFixture, favorite_sports: ['futbol', 'tenis', 'padel'] } })
+  // ── setSportLevel ──────────────────────────────────────────────────────────
+  describe('setSportLevel()', () => {
+    it('agrega un deporte nuevo con su nivel conservando los que ya estaban', async () => {
+      const builder = makeBuilder({ data: profileFixture })
       mockFrom.mockReturnValue(builder)
 
-      await profilesService.addFavoriteSport('user-1', ['futbol', 'tenis'], 'padel')
+      await profilesService.setSportLevel('user-1', { futbol: 'intermedio', tenis: 'principiante' }, 'padel', 'avanzado')
 
       const updateCall = builder.update.mock.calls[0][0] as Record<string, unknown>
-      expect(updateCall.favorite_sports).toContain('padel')
-      expect(updateCall.favorite_sports).toContain('futbol')
-      expect(updateCall.favorite_sports).toContain('tenis')
+      expect(updateCall.sport_levels).toEqual({
+        futbol: 'intermedio',
+        tenis: 'principiante',
+        padel: 'avanzado',
+      })
     })
 
-    it('no agrega duplicados si el deporte ya está en la lista', async () => {
-      // Si el deporte ya existe, retorna la lista actual sin hacer update
-      const currentSports = ['futbol', 'tenis'] as const
+    it('actualiza el nivel de un deporte que ya estaba, sin duplicarlo', async () => {
+      const builder = makeBuilder({ data: profileFixture })
+      mockFrom.mockReturnValue(builder)
 
-      const result = await profilesService.addFavoriteSport('user-1', currentSports as unknown as Parameters<typeof profilesService.addFavoriteSport>[1], 'futbol')
+      await profilesService.setSportLevel('user-1', { futbol: 'intermedio' }, 'futbol', 'avanzado')
 
-      // No debe llamar a Supabase
-      expect(mockFrom).not.toHaveBeenCalled()
-      expect(result).toEqual(currentSports)
+      const updateCall = builder.update.mock.calls[0][0] as Record<string, unknown>
+      expect(updateCall.sport_levels).toEqual({ futbol: 'avanzado' })
     })
   })
 
-  // ── removeFavoriteSport ────────────────────────────────────────────────────
-  describe('removeFavoriteSport()', () => {
-    it('elimina el deporte de la lista de favoritos', async () => {
-      const builder = makeBuilder({ data: { ...profileFixture, favorite_sports: ['tenis'] } })
+  // ── removeSport ────────────────────────────────────────────────────────────
+  describe('removeSport()', () => {
+    it('elimina el deporte del mapa de niveles', async () => {
+      const builder = makeBuilder({ data: profileFixture })
       mockFrom.mockReturnValue(builder)
 
-      await profilesService.removeFavoriteSport('user-1', ['futbol', 'tenis'], 'futbol')
+      await profilesService.removeSport('user-1', { futbol: 'intermedio', tenis: 'principiante' }, 'futbol')
 
       const updateCall = builder.update.mock.calls[0][0] as Record<string, unknown>
-      expect(updateCall.favorite_sports).not.toContain('futbol')
-      expect((updateCall.favorite_sports as string[]).length).toBe(1)
+      expect(updateCall.sport_levels).toEqual({ tenis: 'principiante' })
     })
 
-    it('retorna lista vacía al eliminar el único deporte favorito', async () => {
-      const builder = makeBuilder({ data: { ...profileFixture, favorite_sports: [] } })
+    it('retorna un mapa vacío al eliminar el único deporte', async () => {
+      const builder = makeBuilder({ data: profileFixture })
       mockFrom.mockReturnValue(builder)
 
-      await profilesService.removeFavoriteSport('user-1', ['futbol'], 'futbol')
+      await profilesService.removeSport('user-1', { futbol: 'intermedio' }, 'futbol')
 
       const updateCall = builder.update.mock.calls[0][0] as Record<string, unknown>
-      expect(updateCall.favorite_sports).toEqual([])
+      expect(updateCall.sport_levels).toEqual({})
+    })
+
+    it('no rompe si el deporte no estaba en el mapa', async () => {
+      const builder = makeBuilder({ data: profileFixture })
+      mockFrom.mockReturnValue(builder)
+
+      await profilesService.removeSport('user-1', { futbol: 'intermedio' }, 'padel')
+
+      const updateCall = builder.update.mock.calls[0][0] as Record<string, unknown>
+      expect(updateCall.sport_levels).toEqual({ futbol: 'intermedio' })
     })
   })
 
@@ -231,13 +241,16 @@ describe('profilesService', () => {
 
   // ── listBySport ────────────────────────────────────────────────────────────
   describe('listBySport()', () => {
-    it('filtra perfiles que contienen el deporte en favorite_sports', async () => {
+    it('filtra por existencia de la clave del deporte en sport_levels', async () => {
       const builder = makeBuilder({ data: [profileFixture] })
       mockFrom.mockReturnValue(builder)
 
       await profilesService.listBySport('futbol')
 
-      expect(builder.contains).toHaveBeenCalledWith('favorite_sports', ['futbol'])
+      // Existencia de clave, no contención: {"futbol": null} nunca matchearía
+      // {"futbol": "intermedio"}, así que .contains() daría cero resultados.
+      expect(builder.not).toHaveBeenCalledWith('sport_levels->futbol', 'is', null)
+      expect(builder.contains).not.toHaveBeenCalled()
     })
 
     it('retorna lista vacía cuando no hay perfiles con ese deporte', async () => {

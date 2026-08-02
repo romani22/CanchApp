@@ -14,7 +14,9 @@ export const storageService = {
 		}
 
 		const result = await ImagePicker.launchImageLibraryAsync({
-			mediaTypes: ImagePicker.MediaTypeOptions.Images,
+			// MediaTypeOptions quedó deprecado en expo-image-picker 17 a favor del array
+			// de MediaType. Sigue funcionando, pero desaparece en una versión próxima.
+			mediaTypes: ['images'],
 			allowsEditing: true,
 			aspect: [1, 1],
 			quality: 0.7,

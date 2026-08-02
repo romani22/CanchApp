@@ -1,11 +1,14 @@
 import { styles } from '@/assets/styles/Profile.styles'
 import { Chip } from '@/components/ui/Chip'
 import ConfirmChangesModal from '@/components/ui/ConfirmChangesModal'
+import { SportLevelDraft, SportLevelEditor, draftSports, draftToSportLevels, sportLevelsToDraft, sportsMissingLevel, toggleDraftSport } from '@/components/ui/SportLevelEditor'
+import { levelLabels, sports as sportOptions } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
+import { parseCoords, useVenueZone } from '@/hooks/useVenueZone'
 import { authService } from '@/services/auth.service'
-import { profilesService, UserStats } from '@/services/profiles.service'
+import { profilesService } from '@/services/profiles.service'
 import { colors } from '@/theme/colors'
-import { SportType } from '@/types/database.types'
+import { SkillLevel, SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
@@ -17,28 +20,20 @@ import SportModal from '../profile/SportModal'
 import StatsProfile from '../profile/StatsProfile'
 import ZonaProfile from '../profile/ZonaProfile'
 
-const sportOptions: {
-	key: SportType
-	label: string
-	icon: keyof typeof Ionicons.glyphMap
-}[] = [
-	{ key: 'padel', label: 'Padel', icon: 'tennisball' },
-	{ key: 'futbol', label: 'Futbol', icon: 'football' },
-	{ key: 'tenis', label: 'Tenis', icon: 'tennisball' },
-	{ key: 'basquet', label: 'Basquet', icon: 'basketball' },
-]
-
 export default function ProfileScreen() {
-	const { profile, signOut, updateProfile } = useAuth()
+	const { profile, signOut, refreshProfile } = useAuth()
 
-	const [stats, setStats] = useState<UserStats | null>(null)
-	const [loadingStats, setLoadingStats] = useState(true)
 	const [isEditing, setIsEditing] = useState(false)
 
 	const [editableName, setEditableName] = useState('')
-	const [editableSports, setEditableSports] = useState<SportType[]>([])
-	const [editableZone, setEditableZone] = useState<string | null>(null)
-	const [editableZoneCoords, setEditableZoneCoords] = useState<{ x: number; y: number } | null>(null)
+	const [editableLevels, setEditableLevels] = useState<SportLevelDraft>({})
+
+	// Valores iniciales de la zona en state (no derivados en cada render): useVenueZone
+	// los tiene como dependencia de su efecto de sincronización, y un objeto nuevo por
+	// render lo dispararía en bucle.
+	const [initialZone, setInitialZone] = useState('')
+	const [initialZoneCoords, setInitialZoneCoords] = useState<{ x: number; y: number } | null>(null)
+	const venueZone = useVenueZone(initialZone, initialZoneCoords)
 
 	const [sportsModalVisible, setSportsModalVisible] = useState(false)
 	const [confirmVisible, setConfirmVisible] = useState(false)
@@ -52,24 +47,14 @@ export default function ProfileScreen() {
 	useEffect(() => {
 		if (profile) {
 			setEditableName(profile.full_name || '')
-			setEditableSports(profile.favorite_sports || [])
-			setEditableZone(profile.zone || null)
-			setEditableZoneCoords(profile.zone_coordinates || null)
+			setEditableLevels(sportLevelsToDraft(profile.sport_levels))
+			setInitialZone(profile.zone || '')
+			// parseCoords es obligatorio: Supabase entrega POINT como string "(lon,lat)".
+			// Guardar el string crudo y reenviarlo en el update lo serializaba a NULL,
+			// borrando las coordenadas con sólo editar cualquier otro campo del perfil.
+			setInitialZoneCoords(parseCoords(profile.zone_coordinates))
 		}
 	}, [profile])
-
-	useEffect(() => {
-		const fetchStats = async () => {
-			if (!profile?.id) return
-			try {
-				const data = await profilesService.getUserStats(profile.id)
-				setStats(data)
-			} finally {
-				setLoadingStats(false)
-			}
-		}
-		fetchStats()
-	}, [profile?.id])
 
 	// FIX: no cerrar el form hasta que el usuario confirme o descarte
 	const handleToggleEdit = () => {
@@ -89,16 +74,30 @@ export default function ProfileScreen() {
 			return
 		}
 
+		// Un deporte sin nivel se descartaría al guardar, así que lo avisamos
+		// en vez de dejar que desaparezca en silencio.
+		const sinNivel = sportsMissingLevel(editableLevels)
+		if (sinNivel.length > 0) {
+			const nombres = sinNivel.map((s) => sportOptions.find((o) => o.key === s)?.label ?? s).join(', ')
+			Alert.alert('Falta el nivel', `Elegí tu nivel en: ${nombres}.`)
+			setConfirmVisible(false)
+			return
+		}
+
 		try {
 			setSaving(true)
-			const updated = await profilesService.updateProfile(profile.id, {
+			await profilesService.updateProfile(profile.id, {
 				full_name: editableName,
-				favorite_sports: editableSports,
-				zone: editableZone,
-				zone_coordinates: editableZoneCoords,
+				sport_levels: draftToSportLevels(editableLevels),
+				zone: venueZone.inputText.trim() || null,
+				zone_coordinates: venueZone.coords,
 			})
 
-			await updateProfile(updated)
+			// refreshProfile, no updateProfile(updated): esto último reenviaba la fila
+			// completa devuelta por el update como si fuera un segundo cambio, lo que
+			// además de duplicar la escritura volvía a mandar zone_coordinates y la
+			// borraba. Acá alcanza con releer.
+			await refreshProfile()
 			setIsEditing(false)
 		} catch (error) {
 			Alert.alert('Error', 'No se pudieron guardar los cambios')
@@ -112,19 +111,20 @@ export default function ProfileScreen() {
 	const handleDiscardChanges = () => {
 		// Restaurar valores originales
 		setEditableName(profile?.full_name || '')
-		setEditableSports(profile?.favorite_sports || [])
-		setEditableZone(profile?.zone || null)
-		setEditableZoneCoords(profile?.zone_coordinates || null)
+		setEditableLevels(sportLevelsToDraft(profile?.sport_levels))
+		// reset() explícito: el efecto de sincronización de useVenueZone sólo reacciona
+		// a cambios en los valores iniciales, y al descartar esos siguen siendo los mismos.
+		venueZone.reset(profile?.zone || '', parseCoords(profile?.zone_coordinates))
 		setIsEditing(false)
 		setConfirmVisible(false)
 	}
 
 	const handleSelectSport = (sport: SportType) => {
-		if (editableSports.includes(sport)) {
-			setEditableSports(editableSports.filter((s) => s !== sport))
-		} else {
-			setEditableSports([...editableSports, sport])
-		}
+		setEditableLevels((prev) => toggleDraftSport(prev, sport))
+	}
+
+	const handleChangeSportLevel = (sport: SportType, level: SkillLevel) => {
+		setEditableLevels((prev) => ({ ...prev, [sport]: level }))
 	}
 
 	const handleSignOut = () => {
@@ -176,17 +176,9 @@ export default function ProfileScreen() {
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<HeaderProfile isEditing={isEditing} name={editableName} onChangeName={handleChangeName} />
 
-				{loadingStats ? (
-					<ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />
-				) : (
-					stats && (
-						<StatsProfile
-							totalMatches={stats.total_matches}
-							totalWins={stats.total_wins}
-							rating={stats.rating}
-						/>
-					)
-				)}
+				{/* AuthContext.loadFullProfile ya mergea user_stats dentro de `profile`,
+				    así que no hace falta un segundo fetch ni un spinner propio. */}
+				{profile && <StatsProfile totalMatches={profile.total_matches} totalWins={profile.total_wins} rating={profile.rating} />}
 
 				{/* Deportes */}
 				<View style={styles.section}>
@@ -199,24 +191,22 @@ export default function ProfileScreen() {
 						)}
 					</View>
 
-					<View style={styles.sportsRow}>
-						{editableSports.map((sport) => {
-							const option = sportOptions.find((s) => s.key === sport)
-							return <Chip key={sport} label={option?.label || sport} icon={option?.icon || 'football'} selected size='md' />
-						})}
-					</View>
+					{isEditing ? (
+						<SportLevelEditor draft={editableLevels} onChangeLevel={handleChangeSportLevel} />
+					) : (
+						<View style={styles.sportsRow}>
+							{draftSports(editableLevels).map((sport) => {
+								const option = sportOptions.find((s) => s.key === sport)
+								const level = editableLevels[sport]
+								const label = option?.label ?? sport
+								return <Chip key={sport} label={level ? `${label} · ${levelLabels[level]}` : label} icon={option?.icon || 'football'} selected size='md' />
+							})}
+						</View>
+					)}
 				</View>
 
 				{/* Zona de juego */}
-				<ZonaProfile
-					zone={editableZone}
-					zoneCoordinates={editableZoneCoords}
-					isEditing={isEditing}
-					onChangeZone={(zone, coords) => {
-						setEditableZone(zone)
-						setEditableZoneCoords(coords)
-					}}
-				/>
+				<ZonaProfile venueZone={venueZone} isEditing={isEditing} />
 
 				<View style={styles.section}>
 					<TouchableOpacity style={styles.actionButton} onPress={() => router.push('/(protected)/notificationsSettings/notifications')}>
@@ -240,13 +230,7 @@ export default function ProfileScreen() {
 			</ScrollView>
 
 			{/* Modal deportes */}
-			<SportModal
-				visible={sportsModalVisible}
-				onClose={() => setSportsModalVisible(false)}
-				onSelectSport={handleSelectSport}
-				editableSports={editableSports}
-				sportOptions={sportOptions}
-			/>
+			<SportModal visible={sportsModalVisible} onClose={() => setSportsModalVisible(false)} onSelectSport={handleSelectSport} editableSports={draftSports(editableLevels)} />
 
 			{/* Modal cambiar contraseña */}
 			{passwordModalVisible && (

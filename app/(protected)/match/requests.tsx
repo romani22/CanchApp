@@ -1,10 +1,11 @@
+import { levelForSport, levelLabels } from '@/constants/matches'
 import { requestsService } from '@/services/requests.service'
 import { JoinRequestWithUser } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Stack, useLocalSearchParams } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
 export default function MatchRequestsScreen() {
@@ -14,21 +15,9 @@ export default function MatchRequestsScreen() {
 	const [refreshing, setRefreshing] = useState(false)
 	const [processingId, setProcessingId] = useState<string | null>(null)
 
-	useEffect(() => {
-		loadRequests()
-
-		// Suscribirse a cambios en tiempo real
-		const subscription = requestsService.subscribe(id as string, (payload) => {
-			console.log('Request change:', payload)
-			loadRequests()
-		})
-
-		return () => {
-			subscription.unsubscribe()
-		}
-	}, [id])
-
-	const loadRequests = async () => {
+	// useCallback para poder declararla como dependencia del efecto sin recrear la
+	// suscripción en cada render. Sólo depende de `id`, que el efecto ya observaba.
+	const loadRequests = useCallback(async () => {
 		try {
 			setLoading(true)
 			const data = await requestsService.getMatch(id as string)
@@ -40,7 +29,20 @@ export default function MatchRequestsScreen() {
 			setLoading(false)
 			setRefreshing(false)
 		}
-	}
+	}, [id])
+
+	useEffect(() => {
+		loadRequests()
+
+		// Suscribirse a cambios en tiempo real
+		const subscription = requestsService.subscribe(id as string, () => {
+			loadRequests()
+		})
+
+		return () => {
+			subscription.unsubscribe()
+		}
+	}, [id, loadRequests])
 
 	const handleAccept = async (requestId: string, userName: string) => {
 		Alert.alert('Aceptar solicitud', `¿Quieres aceptar a ${userName}?`, [
@@ -163,9 +165,16 @@ function RequestCard({ request, onAccept, onReject, isProcessing }: RequestCardP
 						</View>
 					</View>
 
-					<View className='bg-gray-100 px-3 py-1 rounded-full'>
-						<Text className='text-gray-600 text-xs font-medium capitalize'>{request.user.skill_level}</Text>
-					</View>
+					{/* Nivel en el deporte del partido al que se está postulando. */}
+					{(() => {
+						const nivel = levelForSport(request.user.sport_levels, request.match.sport)
+						if (!nivel) return null
+						return (
+							<View className='bg-gray-100 px-3 py-1 rounded-full'>
+								<Text className='text-gray-600 text-xs font-medium'>{levelLabels[nivel]}</Text>
+							</View>
+						)
+					})()}
 				</View>
 			</View>
 

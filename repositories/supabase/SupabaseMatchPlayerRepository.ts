@@ -93,7 +93,7 @@ export class SupabaseMatchPlayerRepository implements IMatchPlayerRepository {
 		const safeQuery = normalizeSearchQuery(query)
 		let q = supabase
 			.from('profiles')
-			.select('id, full_name, avatar_url, email, skill_level')
+			.select('id, full_name, avatar_url, email, sport_levels')
 			.or(`full_name.ilike.%${safeQuery}%,email.ilike.%${safeQuery}%`)
 			.limit(normalizeSearchLimit(options?.limit ?? 10))
 

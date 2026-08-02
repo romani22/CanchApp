@@ -1,10 +1,10 @@
 import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
 import Loader from '@/components/ui/Loader'
-import { VenueZoneInput } from '@/components/ui/Venuezoneinput'
-import { buildMatchTitle, levels, sports } from '@/constants/matches'
+import { VenueZoneInput } from '@/components/ui/VenueZoneInput'
+import { TEAM_CONFIG, buildMatchTitle, levels, sports } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
-import { useVenueZone } from '@/hooks/useVenueZone'
+import { parseCoords, useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { colors } from '@/theme/colors'
@@ -17,11 +17,6 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-
-const TEAM_CONFIG = {
-	A: { label: 'Equipo A', color: colors.info, bg: `${colors.info}18`, border: `${colors.info}40` },
-	B: { label: 'Equipo B', color: '#f59e0b', bg: '#f59e0b18', border: '#f59e0b40' },
-} as const
 
 type ParticipantRow = {
 	id: string
@@ -77,7 +72,11 @@ export default function EditMatchScreen() {
 			setSport(data.sport)
 			setVenueName(data.venue_name)
 			setInitialZone(data.venue_zone || '')
-			setInitialCoords((data.venue_coordinates as { x: number; y: number } | null) ?? null)
+			// parseCoords, no un cast: Supabase entrega POINT como string "(lon,lat)".
+			// Con el cast, serializeMatchCoords no encontraba .x/.y al guardar y escribía
+			// NULL, así que editar cualquier campo del partido borraba sus coordenadas
+			// y lo sacaba de las búsquedas por radio.
+			setInitialCoords(parseCoords(data.venue_coordinates))
 			setTotalPlayers(data.total_players)
 			setSkillLevel(data.skill_level)
 			setTeamMode((data.team_mode as TeamMode) || 'none')

@@ -4,6 +4,12 @@ export type SportType = 'futbol' | 'padel' | 'tenis' | 'basquet' | 'voley'
 export type TeamMode = 'none' | 'two_teams'
 export type TeamSlot = 'A' | 'B'
 export type SkillLevel = 'principiante' | 'intermedio' | 'avanzado'
+/**
+ * Mapa deporte -> nivel. Las claves son los deportes que juega el usuario:
+ * reemplazan a la vieja columna favorite_sports, que era una segunda fuente
+ * de verdad para la misma información.
+ */
+export type SportLevels = Partial<Record<SportType, SkillLevel>>
 export type MatchStatus = 'open' | 'full' | 'completed' | 'cancelled'
 export type RequestStatus = 'pending' | 'accepted' | 'rejected'
 export type NotificationType = 'new_match' | 'join_request' | 'request_accepted' | 'request_rejected' | 'match_reminder' | 'match_cancelled' | 'player_joined'
@@ -20,14 +26,16 @@ export interface Database {
 					avatar_url: string | null
 					phone: string | null
 					bio: string | null
-					favorite_sports: SportType[]
-					skill_level: SkillLevel
+					sport_levels: SportLevels
 					zone: string | null
 					zone_coordinates: { x: number; y: number } | null
 					total_matches: number
 					total_wins: number
 					rating: number
 					rating_count: number
+					// Agregada en 003_level_up_db.sql. Faltaba en el tipo, pero varios
+					// select() la piden y el modal de participante la muestra.
+					elo_rating: number
 					push_token: string | null
 					notifications_enabled: boolean
 					notification_radius: number
@@ -36,6 +44,7 @@ export interface Database {
 					notify_request_response: boolean
 					notify_player_joined: boolean
 					notify_match_reminder: boolean
+					onboarding_completed: boolean
 					created_at: string
 					updated_at: string
 				}
@@ -46,14 +55,14 @@ export interface Database {
 					avatar_url?: string | null
 					phone?: string | null
 					bio?: string | null
-					favorite_sports?: SportType[]
-					skill_level?: SkillLevel
+					sport_levels?: SportLevels
 					zone?: string | null
 					zone_coordinates?: { x: number; y: number } | null
 					total_matches?: number
 					total_wins?: number
 					rating?: number
 					rating_count?: number
+					elo_rating?: number
 					push_token?: string | null
 					notifications_enabled?: boolean
 					notification_radius?: number
@@ -62,6 +71,7 @@ export interface Database {
 					notify_request_response?: boolean
 					notify_player_joined?: boolean
 					notify_match_reminder?: boolean
+					onboarding_completed?: boolean
 					created_at?: string
 					updated_at?: string
 				}
@@ -72,14 +82,14 @@ export interface Database {
 					avatar_url?: string | null
 					phone?: string | null
 					bio?: string | null
-					favorite_sports?: SportType[]
-					skill_level?: SkillLevel
+					sport_levels?: SportLevels
 					zone?: string | null
 					zone_coordinates?: { x: number; y: number } | null
 					total_matches?: number
 					total_wins?: number
 					rating?: number
 					rating_count?: number
+					elo_rating?: number
 					push_token?: string | null
 					notifications_enabled?: boolean
 					notification_radius?: number
@@ -88,6 +98,7 @@ export interface Database {
 					notify_request_response?: boolean
 					notify_player_joined?: boolean
 					notify_match_reminder?: boolean
+					onboarding_completed?: boolean
 					updated_at?: string
 				}
 			}
@@ -112,6 +123,15 @@ export interface Database {
 					team_mode: TeamMode
 					status: MatchStatus
 					amenities: string[]
+					// winner_id: 003_level_up_db.sql. Lo usa la vista user_stats para
+					// contar victorias y hay selects que lo traen; faltaba en el tipo.
+					winner_id: string | null
+					// Campos de torneo (001_initial_schema.sql). El feature está sin
+					// implementar, pero las columnas existen.
+					tournament_id: string | null
+					round: number | null
+					home_team_id: string | null
+					away_team_id: string | null
 					created_at: string
 					updated_at: string
 				}
@@ -135,6 +155,11 @@ export interface Database {
 					team_mode?: TeamMode
 					status?: MatchStatus
 					amenities?: string[]
+					winner_id?: string | null
+					tournament_id?: string | null
+					round?: number | null
+					home_team_id?: string | null
+					away_team_id?: string | null
 					created_at?: string
 					updated_at?: string
 				}
@@ -157,29 +182,40 @@ export interface Database {
 					team_mode?: TeamMode
 					status?: MatchStatus
 					amenities?: string[]
+					winner_id?: string | null
+					tournament_id?: string | null
+					round?: number | null
+					home_team_id?: string | null
+					away_team_id?: string | null
 					updated_at?: string
 				}
 			}
 			match_participants: {
 				Row: {
 					id: string
+					// 004_change_user_participans.sql volvió user_id nullable y agregó
+					// guest_name, con un CHECK de exclusión mutua: o hay usuario
+					// registrado, o hay nombre de invitado. Nunca ambos ni ninguno.
+					user_id: string | null
+					guest_name: string | null
 					match_id: string
-					user_id: string
 					joined_at: string
 					is_creator: boolean
 					team_slot: TeamSlot | null
 				}
 				Insert: {
 					id?: string
+					user_id?: string | null
+					guest_name?: string | null
 					match_id: string
-					user_id: string
 					joined_at?: string
 					is_creator?: boolean
 					team_slot?: TeamSlot | null
 				}
 				Update: {
+					user_id?: string | null
+					guest_name?: string | null
 					match_id?: string
-					user_id?: string
 					joined_at?: string
 					is_creator?: boolean
 					team_slot?: TeamSlot | null
@@ -328,8 +364,10 @@ export interface Database {
 				}
 			}
 		}
-		Views: {}
-		Functions: {}
+		// Record<string, never> en vez de {}: el tipo {} acepta cualquier valor no
+		// nulo (0, '', etc.), no "objeto vacío".
+		Views: Record<string, never>
+		Functions: Record<string, never>
 		Enums: {
 			sport_type: SportType
 			skill_level: SkillLevel
@@ -356,7 +394,9 @@ export type Guest = { id: string; name: string }
 // Extended types with relations
 export type MatchWithCreator = Match & {
 	creator: Profile
-	participants: (MatchParticipant & { user: Profile })[]
+	// user es null para los invitados (participantes sin cuenta): en esas filas el
+	// nombre viene en guest_name. El tipo lo declaraba siempre presente.
+	participants: (MatchParticipant & { user: Profile | null })[]
 	players: (MatchPlayer & { user?: Profile; added_by: Profile })[]
 }
 

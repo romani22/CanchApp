@@ -4,10 +4,13 @@ import { useAuth } from '@/context/AuthContext'
 import { useBiometricAuth } from '@/hooks/useBiometricAuth'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import * as WebBrowser from 'expo-web-browser'
 import { useEffect, useState } from 'react'
 import { Alert, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '../../theme/colorsLogin'
+
+WebBrowser.maybeCompleteAuthSession()
 
 const images = [require('@/assets/images/cancha_basquet.png'), require('@/assets/images/cancha_futbol.png'), require('@/assets/images/cancha_padle.png'), require('@/assets/images/cancha_tenis.png')]
 
@@ -21,7 +24,7 @@ export default function LoginScreen() {
 	const [biometricAvailable, setBiometricAvailable] = useState(false)
 	const [biometricEnabled, setBiometricEnabled] = useState(false)
 
-	const { signIn, isAuthenticated } = useAuth()
+	const { signIn, signInWithGoogle, isAuthenticated } = useAuth()
 	const { isAvailable, isEnabled, enable, authenticate } = useBiometricAuth()
 	const [pendingNav, setPendingNav] = useState(false)
 
@@ -117,9 +120,28 @@ export default function LoginScreen() {
 			}
 
 			triggerNavigation()
-		} catch {
+		} catch (err) {
+			console.error('[Login] biometría:', err)
 			setLoading(false)
 			setError('Error al autenticar con huella. Ingresá manualmente.')
+		}
+	}
+
+	const handleGoogleLogin = async () => {
+		setError(null)
+		setLoading(true)
+		try {
+			const { error } = await signInWithGoogle()
+			if (error) {
+				setError('No se pudo iniciar sesión con Google. Intentá de nuevo.')
+				return
+			}
+			triggerNavigation()
+		} catch (err) {
+			console.error('[Login] Google:', err)
+			setError('No se pudo iniciar sesión con Google. Intentá de nuevo.')
+		} finally {
+			setLoading(false)
 		}
 	}
 
@@ -184,21 +206,25 @@ export default function LoginScreen() {
 
 									{error && <Text style={{ color: 'red', textAlign: 'center', marginBottom: 12 }}>{error}</Text>}
 
-									{/* Biometric login */}
+									{/* Social / biometric login */}
+									<View style={styles.dividerContainer}>
+										<View style={styles.dividerLine} />
+										<Text style={styles.dividerText}>O INGRESÁ CON</Text>
+										<View style={styles.dividerLine} />
+									</View>
+
+									<TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
+										<Text style={styles.googleIcon}>G</Text>
+										<Text style={styles.googleButtonText}>Continuar con Google</Text>
+									</TouchableOpacity>
+
 									{biometricAvailable && biometricEnabled && (
-										<>
-											<View style={styles.dividerContainer}>
-												<View style={styles.dividerLine} />
-												<Text style={styles.dividerText}>O INGRESÁ CON</Text>
-												<View style={styles.dividerLine} />
-											</View>
-											<View style={styles.biometricContainer}>
-												<TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin}>
-													<Ionicons name='finger-print' size={32} color={colors.primaryForeground} />
-												</TouchableOpacity>
-												<Text style={styles.biometricText}>Huella dactilar</Text>
-											</View>
-										</>
+										<View style={styles.biometricContainer}>
+											<TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin}>
+												<Ionicons name='finger-print' size={32} color={colors.primaryForeground} />
+											</TouchableOpacity>
+											<Text style={styles.biometricText}>Huella dactilar</Text>
+										</View>
 									)}
 
 									{/* Register Link */}

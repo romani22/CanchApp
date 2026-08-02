@@ -1,6 +1,6 @@
 import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
-import { VenueZoneInput } from '@/components/ui/Venuezoneinput'
+import { VenueZoneInput } from '@/components/ui/VenueZoneInput'
 import { useAuth } from '@/context/AuthContext'
 import { useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
@@ -8,7 +8,8 @@ import { profilesService } from '@/services/profiles.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
-import { SkillLevel, SportType, TeamMode, TeamSlot } from '@/types/database.types'
+import { TEAM_CONFIG, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
+import { SkillLevel, SportLevels, SportType, TeamMode, TeamSlot } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { format } from 'date-fns'
@@ -18,32 +19,13 @@ import { useCallback, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-const sports: { key: SportType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-	{ key: 'futbol', label: 'Futbol', icon: 'football' },
-	{ key: 'padel', label: 'Padel', icon: 'tennisball' },
-	{ key: 'basquet', label: 'Basquet', icon: 'basketball' },
-	{ key: 'voley', label: 'Voley', icon: 'baseball' },
-	{ key: 'tenis', label: 'Tenis', icon: 'tennisball' },
-]
-
-const levels: { key: SkillLevel; label: string }[] = [
-	{ key: 'principiante', label: 'Bajo' },
-	{ key: 'intermedio', label: 'Medio' },
-	{ key: 'avanzado', label: 'Alto' },
-]
-
-const TEAM_CONFIG = {
-	A: { label: 'Equipo A', color: colors.info, bg: `${colors.info}18`, border: `${colors.info}40` },
-	B: { label: 'Equipo B', color: '#f59e0b', bg: '#f59e0b18', border: '#f59e0b40' },
-} as const
-
 type ConfirmedParticipant = { type: 'user'; id: string; userId: string; name: string; avatarUrl: string | null; teamSlot: TeamSlot | null } | { type: 'guest'; id: string; name: string; teamSlot: TeamSlot | null }
 
 type UserSearchResult = {
 	id: string
 	full_name: string
 	avatar_url: string | null
-	skill_level: string
+	sport_levels: SportLevels
 }
 
 export default function CreateMatchScreen() {
@@ -543,7 +525,8 @@ export default function CreateMatchScreen() {
 											)}
 											<View style={{ flex: 1 }}>
 												<Text style={styles.searchName}>{u.full_name}</Text>
-												<Text style={styles.searchSub}>{u.skill_level}</Text>
+												{/* Nivel en el deporte de este partido; si no lo juega, se avisa. */}
+												<Text style={styles.searchSub}>{levelForSport(u.sport_levels, sport) ? levelLabels[levelForSport(u.sport_levels, sport)!] : 'No juega este deporte'}</Text>
 											</View>
 											<Ionicons name='add-circle' size={22} color={colors.primary} />
 										</TouchableOpacity>

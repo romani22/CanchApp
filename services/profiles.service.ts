@@ -1,5 +1,5 @@
 import { repositories } from '@/repositories'
-import type { Profile, SportType } from '@/types/database.types'
+import type { Profile, SkillLevel, SportLevels, SportType } from '@/types/database.types'
 
 export type { UserStats } from '@/repositories/interfaces/IProfileRepository'
 
@@ -16,13 +16,18 @@ export const profilesService = {
 		return repositories.profiles.listBySport(sport)
 	},
 
-	async addFavoriteSport(userId: string, currentSports: SportType[], newSport: SportType) {
-		if (currentSports.includes(newSport)) return currentSports
-		return repositories.profiles.update(userId, { favorite_sports: [...currentSports, newSport] })
+	/**
+	 * Agrega un deporte al perfil con su nivel, o actualiza el nivel si ya estaba.
+	 * Reemplaza a addFavoriteSport: ahora sumar un deporte exige decir con qué nivel.
+	 */
+	async setSportLevel(userId: string, currentLevels: SportLevels, sport: SportType, level: SkillLevel) {
+		return repositories.profiles.update(userId, { sport_levels: { ...currentLevels, [sport]: level } })
 	},
 
-	async removeFavoriteSport(userId: string, currentSports: SportType[], sportToRemove: SportType) {
-		return repositories.profiles.update(userId, { favorite_sports: currentSports.filter((s) => s !== sportToRemove) })
+	/** Quita un deporte del perfil. Reemplaza a removeFavoriteSport. */
+	async removeSport(userId: string, currentLevels: SportLevels, sportToRemove: SportType) {
+		const { [sportToRemove]: _removed, ...rest } = currentLevels
+		return repositories.profiles.update(userId, { sport_levels: rest })
 	},
 
 	async getUserStats(userId: string) {

@@ -74,7 +74,8 @@ export function useNotificationSettings() {
 				setSaving(true)
 				setSaveError(null)
 				await notificationsService.updateSettings(user.id, next)
-			} catch {
+			} catch (err) {
+				console.error('[NotificationSettings] no se pudieron guardar:', err)
 				setSaveError('No se pudieron guardar los cambios')
 			} finally {
 				setSaving(false)

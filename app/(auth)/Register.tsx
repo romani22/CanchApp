@@ -1,26 +1,11 @@
 import { styles } from '@/assets/styles/Register.styles'; // Importación de estilos externos
 import { authService } from '@/services/auth.service'
-import { profilesService } from '@/services/profiles.service'
 import { colors } from '@/theme/colors'
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
+import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-
-const sports = [
-	{ id: 'futbol', label: 'Fútbol', icon: 'soccer' },
-	{ id: 'tenis', label: 'Tenis', icon: 'tennis' },
-	{ id: 'padel', label: 'Pádel', icon: 'human-handsup' },
-	{ id: 'basquet', label: 'Básquet', icon: 'basketball' },
-	{ id: 'voley', label: 'Vóley', icon: 'volleyball' },
-]
-
-const levels = [
-	{ label: 'Principiante', value: 'principiante' as const },
-	{ label: 'Intermedio', value: 'intermedio' as const },
-	{ label: 'Avanzado', value: 'avanzado' as const },
-]
 
 const getErrorMessage = (error: unknown): string => {
 	if (error instanceof Error) return error.message
@@ -29,20 +14,17 @@ const getErrorMessage = (error: unknown): string => {
 }
 
 export default function Register() {
-	const [selectedSports, setSelectedSports] = useState(['futbol'])
-	const [level, setLevel] = useState<'principiante' | 'intermedio' | 'avanzado'>('intermedio')
 	const [fullName, setFullName] = useState('')
 	const [email, setEmail] = useState('')
 	const [password, setPassword] = useState('')
-	const [zone, setZone] = useState('')
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
-
-	const toggleSport = (id: string) => {
-		setSelectedSports((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
-	}
+	const isSubmittingRef = useRef(false)
 
 	const handleRegister = async () => {
+		if (isSubmittingRef.current) return
+		isSubmittingRef.current = true
+
 		try {
 			setError(null)
 
@@ -64,25 +46,19 @@ export default function Register() {
 
 			setLoading(true)
 
-			// 1️⃣ Crear usuario (esto dispara el trigger)
+			// Crear usuario. El trigger handle_new_user() crea el perfil con
+			// onboarding_completed = false, así que el guard de (protected) manda
+			// al onboarding, que es donde se piden deportes, nivel, zona y foto.
 			const { error: signUpError, data } = await authService.signUp(email, password, fullName)
 
 			if (signUpError) throw signUpError
-
-			const userId = data?.id
-			if (!userId) throw new Error('No se pudo obtener el usuario')
-
-			// 2️⃣ Actualizar perfil ya creado por el trigger
-			await profilesService.updateProfile(userId, {
-				favorite_sports: selectedSports as any,
-				skill_level: level,
-				zone,
-			})
+			if (!data?.id) throw new Error('No se pudo obtener el usuario')
 
 			router.replace('/(protected)/(tabs)/Dashboard')
 		} catch (err: unknown) {
 			setError(getErrorMessage(err))
 		} finally {
+			isSubmittingRef.current = false
 			setLoading(false)
 		}
 	}
@@ -98,48 +74,16 @@ export default function Register() {
 			</View>
 
 			<ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-				<Text style={styles.mainTitle}>Crea tu perfil deportivo</Text>
-				<Text style={styles.subtitle}>Únete para competir y reservar turnos en los mejores clubes.</Text>
+				<Text style={styles.mainTitle}>Creá tu cuenta</Text>
+				<Text style={styles.subtitle}>En el próximo paso armamos tu perfil deportivo.</Text>
 
 				{/* Formulario */}
 				<View style={styles.formSection}>
-					<TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder='Ej. Juan Pérez' placeholderTextColor={colors.primary} />
+					<TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder='Ej. Juan Pérez' placeholderTextColor={colors.primary} maxLength={50} />
 
 					<TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder='usuario@ejemplo.com' placeholderTextColor={colors.primary} keyboardType='email-address' autoCapitalize='none' />
 
 					<TextInput style={styles.inputInner} value={password} onChangeText={setPassword} placeholder='Mínimo 8 caracteres' placeholderTextColor={colors.primary} secureTextEntry />
-
-					{/* Deportes Favoritos */}
-					<Text style={styles.inputLabel}>Deportes Favoritos</Text>
-					<View style={styles.sportsContainer}>
-						{sports.map((sport) => (
-							<TouchableOpacity key={sport.id} onPress={() => toggleSport(sport.id)} style={[styles.sportChip, selectedSports.includes(sport.id) && styles.sportChipActive]}>
-								<MaterialCommunityIcons
-									name={sport.icon as any}
-									size={18}
-									color={
-										selectedSports.includes(sport.id)
-											? colors.backgroundDark // Icono oscuro si está seleccionado
-											: colors.sports[sport.id as keyof typeof colors.sports] || colors.textPrimaryDark // Color del deporte si no
-									}
-								/>
-								<Text style={[styles.sportChipText, selectedSports.includes(sport.id) && styles.sportChipTextActive]}>{sport.label}</Text>
-							</TouchableOpacity>
-						))}
-					</View>
-
-					{/* Nivel */}
-					<Text style={styles.inputLabel}>Tu Nivel</Text>
-					<View style={styles.levelSelector}>
-						{levels.map((l) => (
-							<TouchableOpacity key={l.value} onPress={() => setLevel(l.value)} style={[styles.levelOption, level === l.value && styles.levelOptionActive]}>
-								<Text style={[styles.levelText, level === l.value && styles.levelTextActive]}>{l.label}</Text>
-							</TouchableOpacity>
-						))}
-					</View>
-
-					{/* Zona de Juego */}
-					<TextInput style={styles.inputInner} value={zone} onChangeText={setZone} placeholder='Buscar ciudad o barrio' placeholderTextColor={colors.primary} />
 				</View>
 
 				{error && <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text>}
@@ -151,7 +95,7 @@ export default function Register() {
 
 				<View style={styles.footerLinks}>
 					<Text style={styles.footerText}>¿Ya tienes una cuenta? </Text>
-					<TouchableOpacity>
+					<TouchableOpacity onPress={() => router.replace('/(auth)/Login')}>
 						<Text style={styles.linkText}>Inicia sesión</Text>
 					</TouchableOpacity>
 				</View>

@@ -1,4 +1,5 @@
 import { styles } from '@/assets/styles/Profile.styles'
+import { describeSportLevels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
 import { profilesService } from '@/services/profiles.service'
 import { storageService } from '@/services/storage.service'
@@ -46,12 +47,6 @@ function HeaderProfile({ isEditing, name, onChangeName }: Props) {
 		} finally {
 			setUploadingAvatar(false)
 		}
-	}
-
-	const skillLevelLabel: Record<string, string> = {
-		principiante: 'Principiante',
-		intermedio: 'Intermedio',
-		avanzado: 'Avanzado',
 	}
 
 	return (
@@ -102,9 +97,13 @@ function HeaderProfile({ isEditing, name, onChangeName }: Props) {
 					: 'Feb 2023'}
 			</Text>
 
-			<View style={styles.levelBadge}>
-				<Text style={styles.levelBadgeText}>Nivel {skillLevelLabel[profile?.skill_level || 'intermedio']}</Text>
-			</View>
+			{/* Sin contexto de deporte: se listan todos. Los lugares que sí conocen el
+			    deporte (tarjeta de partido, participantes, solicitudes) usan levelForSport(). */}
+			{describeSportLevels(profile?.sport_levels) !== '' && (
+				<View style={styles.levelBadge}>
+					<Text style={styles.levelBadgeText}>{describeSportLevels(profile?.sport_levels)}</Text>
+				</View>
+			)}
 		</View>
 	)
 }

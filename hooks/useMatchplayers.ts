@@ -1,7 +1,7 @@
 import { useAuth } from '@/context/AuthContext'
 import { AddMultiplePlayersResult, AddPlayerInput, matchPlayersService } from '@/services/matchPlayers.service'
 import { MatchPlayerWithUser, TeamSlot } from '@/types/database.types'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export function useMatchPlayers(matchId: string | undefined) {
 	const [players, setPlayers] = useState<MatchPlayerWithUser[]>([])
@@ -11,8 +11,11 @@ export function useMatchPlayers(matchId: string | undefined) {
 	const [remainingSlots, setRemainingSlots] = useState(0)
 	const { user } = useAuth()
 
-	// Cargar jugadores
-	const loadPlayers = async () => {
+	// Cargar jugadores.
+	//
+	// useCallback para poder declararla como dependencia del efecto sin recrear la
+	// suscripción en cada render. Sólo depende de `matchId`, que el efecto ya observaba.
+	const loadPlayers = useCallback(async () => {
 		if (!matchId) return
 
 		try {
@@ -31,7 +34,7 @@ export function useMatchPlayers(matchId: string | undefined) {
 		} finally {
 			setIsLoading(false)
 		}
-	}
+	}, [matchId])
 
 	// Agregar un solo jugador
 	const addPlayer = async (player: AddPlayerInput) => {
@@ -144,15 +147,14 @@ export function useMatchPlayers(matchId: string | undefined) {
 		loadPlayers()
 
 		// Suscribirse a cambios en tiempo real
-		const subscription = matchPlayersService.subscribe(matchId, (payload: any) => {
-			console.log('Player change detected:', payload)
+		const subscription = matchPlayersService.subscribe(matchId, () => {
 			loadPlayers()
 		})
 
 		return () => {
 			subscription.unsubscribe()
 		}
-	}, [matchId])
+	}, [matchId, loadPlayers])
 
 	return {
 		players,

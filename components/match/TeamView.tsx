@@ -1,3 +1,4 @@
+import { TEAM_CONFIG } from '@/constants/matches'
 import { colors } from '@/theme/colors'
 import { borderRadius, spacing } from '@/theme/spacing'
 import { typography } from '@/theme/typography'
@@ -14,7 +15,6 @@ type ParticipantRow = {
 		id: string
 		full_name: string
 		avatar_url: string | null
-		skill_level?: string
 	} | null
 }
 
@@ -30,11 +30,6 @@ interface Props {
 	onJoinTeam?: (slot: TeamSlot) => void
 	onMovePlayer?: (participantId: string, toSlot: TeamSlot) => void
 }
-
-const TEAM_CONFIG = {
-	A: { label: 'Equipo A', color: colors.info, bg: `${colors.info}18`, border: `${colors.info}40` },
-	B: { label: 'Equipo B', color: '#f59e0b', bg: '#f59e0b18', border: '#f59e0b40' },
-} as const
 
 const avatarColors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4']
 const getColor = (name?: string | null) => avatarColors[(name?.charCodeAt(0) ?? 0) % avatarColors.length]

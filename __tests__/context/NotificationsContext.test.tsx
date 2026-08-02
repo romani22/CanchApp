@@ -24,7 +24,7 @@ jest.mock('@/lib/supabase', () => {
   }
 })
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const supabaseMock = jest.requireMock('@/lib/supabase') as {
   __mockFrom: jest.Mock
   __mockChannelFn: jest.Mock
@@ -42,7 +42,7 @@ jest.mock('@/context/AuthContext', () => {
   return { useAuth: () => mockFn(), __mockUseAuth: mockFn }
 })
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const mockUseAuth = (jest.requireMock('@/context/AuthContext') as { __mockUseAuth: jest.Mock }).__mockUseAuth
 
 // ── Builder para count queries ────────────────────────────────────────────────

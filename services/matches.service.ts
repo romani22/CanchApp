@@ -1,5 +1,5 @@
 import { repositories } from '@/repositories'
-import type { InsertMatch, Match, MatchListFilters, MatchUpdate, MatchWithCreator } from '@/types/database.types'
+import type { InsertMatch, Match, MatchListFilters, MatchUpdate } from '@/types/database.types'
 import { format } from 'date-fns'
 
 export interface MatchCard {

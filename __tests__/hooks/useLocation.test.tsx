@@ -105,7 +105,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let locationResult: Awaited<ReturnType<typeof result.current.detect>>
+      let locationResult: Awaited<ReturnType<typeof result.current.detect>> | undefined
       await act(async () => {
         locationResult = await result.current.detect()
       })
@@ -126,7 +126,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let locationResult: Awaited<ReturnType<typeof result.current.detect>>
+      let locationResult: Awaited<ReturnType<typeof result.current.detect>> | undefined
       await act(async () => {
         locationResult = await result.current.detect()
       })
@@ -145,7 +145,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let locationResult: Awaited<ReturnType<typeof result.current.detect>>
+      let locationResult: Awaited<ReturnType<typeof result.current.detect>> | undefined
       await act(async () => {
         locationResult = await result.current.detect()
       })
@@ -164,7 +164,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let locationResult: Awaited<ReturnType<typeof result.current.detect>>
+      let locationResult: Awaited<ReturnType<typeof result.current.detect>> | undefined
       await act(async () => {
         locationResult = await result.current.detect()
       })
@@ -194,7 +194,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let locationResult: Awaited<ReturnType<typeof result.current.detect>>
+      let locationResult: Awaited<ReturnType<typeof result.current.detect>> | undefined
       await act(async () => {
         locationResult = await result.current.detect()
       })
@@ -221,7 +221,7 @@ describe('useLocation', () => {
     it('retorna null para query vacía', async () => {
       const { result } = renderHook(() => useLocation())
 
-      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>>
+      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>> | undefined
       await act(async () => {
         coords = await result.current.geocodeZone('')
       })
@@ -233,7 +233,7 @@ describe('useLocation', () => {
     it('retorna null para query con solo espacios', async () => {
       const { result } = renderHook(() => useLocation())
 
-      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>>
+      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>> | undefined
       await act(async () => {
         coords = await result.current.geocodeZone('   ')
       })
@@ -244,7 +244,7 @@ describe('useLocation', () => {
     it('retorna null cuando la query tiene menos de 3 caracteres', async () => {
       const { result } = renderHook(() => useLocation())
 
-      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>>
+      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>> | undefined
       await act(async () => {
         coords = await result.current.geocodeZone('ab')
       })
@@ -258,7 +258,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>>
+      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>> | undefined
       await act(async () => {
         coords = await result.current.geocodeZone('Córdoba')
       })
@@ -283,7 +283,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>>
+      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>> | undefined
       await act(async () => {
         coords = await result.current.geocodeZone('LugarInexistente')
       })
@@ -296,7 +296,7 @@ describe('useLocation', () => {
 
       const { result } = renderHook(() => useLocation())
 
-      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>>
+      let coords: Awaited<ReturnType<typeof result.current.geocodeZone>> | undefined
       await act(async () => {
         coords = await result.current.geocodeZone('Córdoba')
       })

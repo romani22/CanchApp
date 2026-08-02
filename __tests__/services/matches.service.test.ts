@@ -45,7 +45,7 @@ jest.mock('@/lib/supabase', () => {
   }
 })
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const supabaseMock = jest.requireMock('@/lib/supabase') as { __mockFrom: jest.Mock; __mockRpc: jest.Mock }
 const mockFrom = supabaseMock.__mockFrom
 const mockRpc = supabaseMock.__mockRpc
@@ -277,12 +277,8 @@ describe('matchesService', () => {
       const future = new Date(Date.now() + 86400000).toISOString()
       const sameMatch = { ...matchFixture, id: 'dupe-match', starts_at: future }
 
-      // Primera llamada: partidos creados; segunda: partidos joined
-      let callCount = 0
-      mockFrom.mockImplementation(() => {
-        callCount++
-        return makeBuilder({ data: [sameMatch] })
-      })
+      // Ambas consultas (creados y joined) devuelven el mismo partido
+      mockFrom.mockImplementation(() => makeBuilder({ data: [sameMatch] }))
 
       const { data } = await matchesService.getNextMatchForUser('user-1')
 

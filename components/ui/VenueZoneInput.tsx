@@ -17,9 +17,14 @@ interface Props {
 	onSelect: (item: LocalidadSuggestion) => void
 	onDetectGPS: () => Promise<void>
 	onDismiss: () => void
+	/** Texto del cartel verde al confirmar coordenadas. Por defecto habla del partido. */
+	confirmedHint?: string
+	placeholder?: string
 }
 
-export function VenueZoneInput({ value, coords, suggestions, searching, isDirty, onChangeText, onSelect, onDetectGPS, onDismiss }: Props) {
+const DEFAULT_CONFIRMED_HINT = 'Coordenadas confirmadas — el partido aparecerá en búsquedas por zona'
+
+export function VenueZoneInput({ value, coords, suggestions, searching, isDirty, onChangeText, onSelect, onDetectGPS, onDismiss, confirmedHint = DEFAULT_CONFIRMED_HINT, placeholder = 'Ej: Morteros, Córdoba...' }: Props) {
 	const { loading: detectingGPS } = useLocation()
 	const isBusy = detectingGPS || searching
 	// Coords confirmadas = hay coords Y el usuario no escribió algo nuevo después
@@ -30,7 +35,7 @@ export function VenueZoneInput({ value, coords, suggestions, searching, isDirty,
 			{/* Input */}
 			<View style={[matchStyles.inputWrapper, suggestions.length > 0 && localStyles.inputOpen]}>
 				<Ionicons name='map-outline' size={20} color={colors.textSecondaryDark} />
-				<TextInput style={matchStyles.input} placeholder='Ej: Morteros, Córdoba...' placeholderTextColor={colors.textSecondaryDark} value={value} onChangeText={onChangeText} autoCapitalize='words' returnKeyType='done' onBlur={onDismiss} autoCorrect={false} />
+				<TextInput style={matchStyles.input} placeholder={placeholder} placeholderTextColor={colors.textSecondaryDark} value={value} onChangeText={onChangeText} autoCapitalize='words' returnKeyType='done' onBlur={onDismiss} autoCorrect={false} />
 				{isBusy && <ActivityIndicator size='small' color={colors.primary} style={{ marginRight: 2 }} />}
 				{!isBusy && isConfirmed && <Ionicons name='checkmark-circle' size={18} color={colors.success} style={{ marginRight: 2 }} />}
 				<TouchableOpacity onPress={onDetectGPS} disabled={isBusy} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -62,7 +67,7 @@ export function VenueZoneInput({ value, coords, suggestions, searching, isDirty,
 				{!isBusy && isConfirmed && (
 					<>
 						<Ionicons name='checkmark-circle' size={12} color={colors.success} />
-						<Text style={[localStyles.statusMuted, { color: colors.success }]}>Coordenadas confirmadas — el partido aparecerá en búsquedas por zona</Text>
+						<Text style={[localStyles.statusMuted, { color: colors.success }]}>{confirmedHint}</Text>
 					</>
 				)}
 				{!isBusy && isDirty && value.trim().length >= 2 && suggestions.length === 0 && !searching && (

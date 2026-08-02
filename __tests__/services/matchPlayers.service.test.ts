@@ -38,7 +38,7 @@ jest.mock('@/lib/supabase', () => {
   }
 })
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const supabaseMock = jest.requireMock('@/lib/supabase') as { __mockFrom: jest.Mock; __mockRpc: jest.Mock; __mockChannel: jest.Mock }
 const mockFrom = supabaseMock.__mockFrom
 const mockRpc = supabaseMock.__mockRpc
@@ -240,7 +240,7 @@ describe('matchPlayersService', () => {
 
     it('lanza error cuando Supabase falla', async () => {
       const builder = makeBuilder({})
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       ;(builder as any).then = (onFulfilled?: (v: unknown) => unknown, onRejected?: (r: unknown) => unknown) =>
         Promise.resolve({ data: null, error: new Error('Query failed') }).then(onFulfilled, onRejected)
       mockFrom.mockReturnValue(builder)

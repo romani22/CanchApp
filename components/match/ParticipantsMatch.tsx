@@ -1,10 +1,10 @@
 import { styles } from '@/assets/styles/Match.styles'
-import { levelLabels } from '@/constants/matches'
-import { colors } from '@/theme/colors'
-import { SkillLevel } from '@/types/database.types'
+import { ParticipantModal } from '@/components/match/ParticipantModal'
+
+import { SportLevels, SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { useState } from 'react'
-import { Image, Modal, Text, TouchableOpacity, View } from 'react-native'
+import { Image, Text, TouchableOpacity, View } from 'react-native'
 
 type ParticipantRow = {
 	id: string
@@ -17,12 +17,14 @@ type ParticipantRow = {
 		avatar_url: string | null
 		rating?: number
 		elo_rating?: number
-		skill_level?: SkillLevel
+		sport_levels?: SportLevels
 	} | null
 }
 
 type MatchForParticipants = {
 	total_players: number
+	// Necesario para elegir el nivel correcto del jugador entre sus sport_levels.
+	sport: SportType
 	participants: ParticipantRow[]
 }
 
@@ -42,11 +44,6 @@ function ParticipantsMatch({ match }: Props) {
 
 	const participants = match.participants ?? []
 	const emptySlots = Math.max(0, match.total_players - participants.length)
-
-	const selectedName = selectedParticipant?.user?.full_name ?? selectedParticipant?.guest_name ?? 'Invitado'
-	const isGuest = !selectedParticipant?.user_id
-	const selectedRating = selectedParticipant?.user?.rating
-	const selectedLevel = selectedParticipant?.user?.skill_level
 
 	return (
 		<>
@@ -73,64 +70,7 @@ function ParticipantsMatch({ match }: Props) {
 				</View>
 			</View>
 
-			{/* Modal de participante — igual al de MatchCard */}
-			<Modal visible={!!selectedParticipant} transparent animationType='fade' onRequestClose={() => setSelectedParticipant(null)}>
-				<TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setSelectedParticipant(null)}>
-					<View
-						style={{
-							width: 280,
-							backgroundColor: colors.surfaceDark,
-							borderRadius: 20,
-							padding: 24,
-							alignItems: 'center',
-							borderWidth: 1,
-							borderColor: colors.borderDark,
-						}}
-					>
-						{/* Avatar */}
-						{selectedParticipant?.user?.avatar_url ? (
-							<Image source={{ uri: selectedParticipant.user.avatar_url }} style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 14, borderWidth: 3, borderColor: colors.primary }} />
-						) : (
-							<View
-								style={{
-									width: 80,
-									height: 80,
-									borderRadius: 40,
-									backgroundColor: getColorFromString(selectedName),
-									borderWidth: 3,
-									borderColor: colors.primary,
-									alignItems: 'center',
-									justifyContent: 'center',
-									marginBottom: 14,
-								}}
-							>
-								{selectedName && selectedName !== 'Invitado' ? <Text style={{ fontSize: 32, fontWeight: '700', color: 'white' }}>{selectedName.charAt(0).toUpperCase()}</Text> : <Ionicons name='person' size={36} color='white' />}
-							</View>
-						)}
-
-						{/* Nombre */}
-						<Text style={{ color: colors.textPrimaryDark, fontSize: 18, fontWeight: '600' }}>{selectedName}</Text>
-
-						{/* Tipo */}
-						<Text style={{ color: colors.textSecondaryDark, marginTop: 4, fontSize: 13 }}>{isGuest ? 'Invitado' : 'Jugador registrado'}</Text>
-
-						{/* Nivel si existe */}
-						{selectedLevel && (
-							<View style={{ marginTop: 10, backgroundColor: `${colors.primary}20`, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 }}>
-								<Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{levelLabels[selectedLevel]}</Text>
-							</View>
-						)}
-
-						{/* Rating si existe */}
-						{selectedRating != null && selectedRating > 0 && (
-							<View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
-								<Ionicons name='star' size={14} color='#f59e0b' />
-								<Text style={{ color: colors.textSecondaryDark, fontSize: 13 }}>{selectedRating.toFixed(1)}</Text>
-							</View>
-						)}
-					</View>
-				</TouchableOpacity>
-			</Modal>
+			<ParticipantModal participant={selectedParticipant} sport={match.sport} onClose={() => setSelectedParticipant(null)} />
 		</>
 	)
 }

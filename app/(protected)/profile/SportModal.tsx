@@ -1,41 +1,89 @@
-import { colors } from '@/theme/colors';
-import { SportType } from '@/types/database.types';
-import { Modal, Text, TouchableOpacity, View } from 'react-native';
+import { Chip } from '@/components/ui/Chip'
+import { sports } from '@/constants/matches'
+import { colors } from '@/theme/colors'
+import { borderRadius, spacing } from '@/theme/spacing'
+import { typography } from '@/theme/typography'
+import { SportType } from '@/types/database.types'
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
-export default function SportModal({ visible, onClose, onSelectSport, editableSports, sportOptions }: { visible: boolean; onClose: () => void; onSelectSport: (sport: SportType) => void; editableSports: SportType[]; sportOptions: any[] }) {
+type Props = {
+	visible: boolean
+	onClose: () => void
+	onSelectSport: (sport: SportType) => void
+	/** Deportes ya elegidos, para marcarlos como seleccionados. */
+	editableSports: SportType[]
+}
+
+/**
+ * Selector de deportes del perfil.
+ *
+ * Usa la lista canónica de constants/matches y el componente Chip, igual que el
+ * resto de la app. Antes recibía las opciones por prop tipadas como any[] y
+ * dibujaba todo con estilos inline y colores hardcodeados.
+ */
+export default function SportModal({ visible, onClose, onSelectSport, editableSports }: Props) {
 	return (
-		<Modal visible={visible} animationType='slide' transparent>
-			<View style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center' }}>
-				<View
-					style={{
-						backgroundColor: '#111',
-						margin: 20,
-						borderRadius: 12,
-						padding: 20,
-					}}
-				>
-					<Text style={{ color: 'white', marginBottom: 20 }}>Seleccionar Deportes</Text>
+		<Modal visible={visible} animationType='slide' transparent onRequestClose={onClose}>
+			<TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+				{/* El TouchableOpacity interno frena la propagación para que tocar
+				    dentro de la tarjeta no cierre el modal. */}
+				<TouchableOpacity style={styles.card} activeOpacity={1}>
+					<Text style={styles.title}>Seleccionar deportes</Text>
+					<Text style={styles.hint}>Tocá para agregar o quitar. Después elegís tu nivel en cada uno.</Text>
 
-					{sportOptions.map((sport) => (
-						<TouchableOpacity
-							key={sport.key}
-							onPress={() => onSelectSport(sport.key)}
-							style={{
-								padding: 12,
-								backgroundColor: editableSports.includes(sport.key) ? colors.primary : '#222',
-								marginBottom: 10,
-								borderRadius: 8,
-							}}
-						>
-							<Text style={{ color: 'white' }}>{sport.label}</Text>
-						</TouchableOpacity>
-					))}
+					<View style={styles.chips}>
+						{sports.map((sport) => (
+							<Chip key={sport.key} label={sport.label} icon={sport.icon} selected={editableSports.includes(sport.key)} onPress={() => onSelectSport(sport.key)} size='md' />
+						))}
+					</View>
 
-					<TouchableOpacity onPress={() => onClose()}>
-						<Text style={{ color: colors.primary }}>Cerrar</Text>
+					<TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.7}>
+						<Text style={styles.closeButtonText}>Listo</Text>
 					</TouchableOpacity>
-				</View>
-			</View>
+				</TouchableOpacity>
+			</TouchableOpacity>
 		</Modal>
 	)
 }
+
+const styles = StyleSheet.create({
+	overlay: {
+		flex: 1,
+		backgroundColor: 'rgba(0,0,0,0.65)',
+		justifyContent: 'center',
+		padding: spacing.xl,
+	},
+	card: {
+		backgroundColor: colors.surfaceDark,
+		borderRadius: borderRadius.lg,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+		padding: spacing.xl,
+	},
+	title: {
+		...typography.h4,
+		color: colors.textPrimaryDark,
+	},
+	hint: {
+		...typography.bodySmall,
+		color: colors.textSecondaryDark,
+		marginTop: spacing.xs,
+		marginBottom: spacing.lg,
+	},
+	chips: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		gap: spacing.sm,
+		marginBottom: spacing.xl,
+	},
+	closeButton: {
+		backgroundColor: colors.primary,
+		borderRadius: borderRadius.md,
+		paddingVertical: spacing.lg,
+		alignItems: 'center',
+	},
+	closeButtonText: {
+		...typography.button,
+		color: colors.backgroundDark,
+	},
+})

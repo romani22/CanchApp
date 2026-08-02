@@ -16,9 +16,9 @@ jest.mock('@/context/AuthContext', () => {
   return { useAuth: () => mockFn(), __mockUseAuth: mockFn }
 })
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const mockMatchesList = (jest.requireMock('@/services/matches.service') as { __mockList: jest.Mock }).__mockList
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const mockUseAuth = (jest.requireMock('@/context/AuthContext') as { __mockUseAuth: jest.Mock }).__mockUseAuth
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

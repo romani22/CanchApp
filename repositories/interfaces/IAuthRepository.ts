@@ -10,4 +10,5 @@ export interface IAuthRepository {
 	signOut(): Promise<{ error: Error | null }>
 	resetPassword(email: string): Promise<{ error: Error | null }>
 	updatePassword(newPassword: string): Promise<{ error: Error | null }>
+	signInWithGoogle(): Promise<{ error: Error | null }>
 }
