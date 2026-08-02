@@ -5,7 +5,6 @@
   },
   "build": {
     "base": {
-      "//": "Node fijo para todos los perfiles. Sin esto el builder usa su default y el package-lock.json generado con otra versión de npm no valida: npm ci falla con 'package.json and package-lock.json are not in sync' por diferencias en las dependencias opcionales por plataforma. Node 20 trae npm 10, que es con el que se generó el lock.",
       "node": "20.19.4"
     },
     "development": {
