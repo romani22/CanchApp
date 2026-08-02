@@ -2,7 +2,9 @@
 
 # dependencies
 node_modules/
-package-lock.json
+# package-lock.json NO va acá: EAS Build arma el archivo de subida respetando
+# .gitignore, así que ignorarlo hacía que el builder no lo recibiera, cayera a
+# yarn y resolviera dependencias desde cero en cada build (no reproducible).
 
 # Expo
 .expo/
@@ -32,7 +34,10 @@ yarn-error.*
 *.pem
 
 # local env files
-.env
+# .env tampoco va acá: sólo contiene variables EXPO_PUBLIC_*, que terminan
+# empaquetadas dentro del APK igual (son públicas por diseño). Si se ignora,
+# EAS no lo sube y la app se compila sin la URL de Supabase.
+# Los secretos de verdad viven en .env.local, que sí se ignora.
 .env*.local
 
 # typescript
