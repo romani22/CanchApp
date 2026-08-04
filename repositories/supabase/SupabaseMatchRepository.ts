@@ -126,11 +126,27 @@ export class SupabaseMatchRepository implements IMatchRepository {
 		return { data: parseMatchRows<MatchWithCreator>(data), error: error ?? null }
 	}
 
+	/**
+	 * Dos pasos a propósito. La versión de un solo query filtraba el join embebido
+	 * (`match_participants!inner` + eq('participants.user_id')), así que cada partido
+	 * volvía con UN participante: el propio usuario. Con eso la tarjeta mostraba un
+	 * solo avatar y un "Faltan" calculado sobre 1 jugador.
+	 *
+	 * Primero se resuelven los ids de los partidos donde el usuario participa y
+	 * después se traen completos, sin filtro sobre la relación.
+	 */
 	async getJoined(userId: string): Promise<{ data: MatchWithCreator[] | null; error: Error | null }> {
+		const { data: rows, error: idsError } = await supabase.from('match_participants').select('match_id').eq('user_id', userId)
+
+		if (idsError) return { data: null, error: idsError }
+
+		const matchIds = [...new Set((rows ?? []).map((r) => r.match_id).filter(Boolean))]
+		if (matchIds.length === 0) return { data: [], error: null }
+
 		const { data, error } = await supabase
 			.from('matches')
-			.select(`*, creator:profiles!matches_creator_id_fkey(*), winner:profiles!matches_winner_id_fkey(*), participants:match_participants!inner(*, user:profiles(*))`)
-			.eq('participants.user_id', userId)
+			.select(`*, creator:profiles!matches_creator_id_fkey(*), winner:profiles!matches_winner_id_fkey(*), participants:match_participants(${PARTICIPANTS_SELECT})`)
+			.in('id', matchIds)
 			.order('starts_at', { ascending: true })
 
 		return { data: parseMatchRows<MatchWithCreator>(data), error: error ?? null }

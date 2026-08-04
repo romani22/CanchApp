@@ -1,4 +1,5 @@
 import Loader from '@/components/ui/Loader'
+import { AppLockProvider } from '@/context/AppLockContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { MatchProvider } from '@/context/MatchContext'
 import { NotificationsProvider } from '@/context/NotificationsContext'
@@ -18,11 +19,13 @@ function RootNavigation() {
 export default function RootLayout() {
 	return (
 		<AuthProvider>
-			<NotificationsProvider>
-				<MatchProvider>
-					<RootNavigation />
-				</MatchProvider>
-			</NotificationsProvider>
+			<AppLockProvider>
+				<NotificationsProvider>
+					<MatchProvider>
+						<RootNavigation />
+					</MatchProvider>
+				</NotificationsProvider>
+			</AppLockProvider>
 		</AuthProvider>
 	)
 }

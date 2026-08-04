@@ -119,7 +119,8 @@ export const styles = StyleSheet.create({
 		borderWidth: 1,
 		borderColor: colors.borderDark,
 		borderRadius: borderRadius.lg,
-		padding: spacing.lg,
+		paddingHorizontal: spacing.sm,
+		paddingVertical: spacing.md,
 		alignItems: 'center',
 	},
 	statValue: {

@@ -2,20 +2,21 @@ import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
 import { VenueZoneInput } from '@/components/ui/VenueZoneInput'
 import { useAuth } from '@/context/AuthContext'
+import { useKeyboardAwareScroll } from '@/hooks/useKeyboardAwareScroll'
 import { useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { profilesService } from '@/services/profiles.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
-import { TEAM_CONFIG, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
+import { TEAM_CONFIG, buildMatchTitle, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
 import { SkillLevel, SportLevels, SportType, TeamMode, TeamSlot } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { router } from 'expo-router'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -33,6 +34,7 @@ export default function CreateMatchScreen() {
 	const [isLoading, setIsLoading] = useState(false)
 
 	const [sport, setSport] = useState<SportType>('futbol')
+	const [title, setTitle] = useState('')
 	const [date, setDate] = useState(new Date())
 	const [time, setTime] = useState(new Date())
 	const [showDatePicker, setShowDatePicker] = useState(false)
@@ -55,6 +57,20 @@ export default function CreateMatchScreen() {
 	const [pendingUser, setPendingUser] = useState<UserSearchResult | null>(null)
 	const [pendingGuestName, setPendingGuestName] = useState<string | null>(null)
 
+	// Teclado: sin esto el campo enfocado queda tapado (ver useKeyboardAwareScroll)
+	const { scrollRef, keyboardHeight, onSectionLayout, onFieldFocus } = useKeyboardAwareScroll()
+
+	// Contador de búsquedas en vuelo: sólo la última pinta resultados.
+	const searchSeq = useRef(0)
+	// Ids locales de los confirmados. Date.now() se repite si se agregan dos
+	// jugadores en el mismo milisegundo, y con la key duplicada quitar a uno
+	// quitaba a los dos.
+	const localIdSeq = useRef(0)
+	const nextLocalId = () => `p-${++localIdSeq.current}`
+
+	// Título sugerido — es lo que se guarda si el usuario no escribe un nombre.
+	const suggestedTitle = buildMatchTitle(sport, totalPlayers)
+
 	const playersNeeded = Math.max(0, totalPlayers - 1 - confirmed.length)
 	const slotsAvailable = totalPlayers - 1 - confirmed.length
 
@@ -62,49 +78,71 @@ export default function CreateMatchScreen() {
 	const teamACount = confirmed.filter((p) => p.teamSlot === 'A').length + (creatorTeamSlot === 'A' ? 1 : 0)
 	const teamBCount = confirmed.filter((p) => p.teamSlot === 'B').length + (creatorTeamSlot === 'B' ? 1 : 0)
 
+	// Usuarios ya agregados. Se deriva del state en vez de calcularse dentro del
+	// fetch: así el filtro del listado siempre mira la lista actual.
+	const addedUserIds = useMemo(() => new Set(confirmed.filter((p) => p.type === 'user').map((p) => p.userId)), [confirmed])
+	const visibleResults = searchResults.filter((u) => !addedUserIds.has(u.id))
+
 	// ── Búsqueda de usuarios ─────────────────────────────────────────────
 	const handleSearch = useCallback(
 		async (query: string) => {
 			setSearchQuery(query)
+			const seq = ++searchSeq.current
+
 			if (query.trim().length < 2) {
 				setSearchResults([])
 				return
 			}
 			try {
 				setSearching(true)
-				const addedUserIds = confirmed.filter((p) => p.type === 'user').map((p) => (p as any).userId)
 				const data = await profilesService.searchByName(query, { excludeUserId: user?.id, limit: 5 })
-				setSearchResults((data || []).filter((u) => !addedUserIds.includes(u.id)))
+				// Respuesta vieja: la búsqueda que la pidió ya fue reemplazada (otra
+				// tecla, o el jugador ya se agregó). Pintarla reponía en el listado a
+				// alguien recién agregado y se podía sumar dos veces al partido.
+				if (seq !== searchSeq.current) return
+				setSearchResults(data || [])
 			} catch (err) {
 				console.error('[Create] búsqueda:', err)
 			} finally {
-				setSearching(false)
+				if (seq === searchSeq.current) setSearching(false)
 			}
 		},
-		[confirmed, user?.id],
+		[user?.id],
 	)
+
+	/** Invalida las búsquedas en vuelo y limpia el buscador. */
+	const clearSearch = () => {
+		searchSeq.current++
+		setSearchQuery('')
+		setSearchResults([])
+		setSearching(false)
+	}
 
 	// ── Agregar jugadores ──────────────────────────────────────────────
 	const doAddUser = (u: UserSearchResult, slot: TeamSlot | null) => {
-		setConfirmed((prev) => [...prev, { type: 'user', id: Date.now().toString(), userId: u.id, name: u.full_name, avatarUrl: u.avatar_url, teamSlot: slot }])
-		setSearchQuery('')
-		setSearchResults([])
+		// Red de seguridad contra el doble agregado: el mismo usuario no puede
+		// ocupar dos lugares del partido.
+		setConfirmed((prev) => (prev.some((p) => p.type === 'user' && p.userId === u.id) ? prev : [...prev, { type: 'user', id: nextLocalId(), userId: u.id, name: u.full_name, avatarUrl: u.avatar_url, teamSlot: slot }]))
+		clearSearch()
 		setPendingUser(null)
 	}
 
 	const doAddGuest = (name: string, slot: TeamSlot | null) => {
-		setConfirmed((prev) => [...prev, { type: 'guest', id: Date.now().toString(), name, teamSlot: slot }])
-		setSearchQuery('')
-		setSearchResults([])
+		setConfirmed((prev) => [...prev, { type: 'guest', id: nextLocalId(), name, teamSlot: slot }])
+		clearSearch()
 		setPendingGuestName(null)
 	}
 
 	const addUserParticipant = (u: UserSearchResult) => {
+		if (addedUserIds.has(u.id)) return
 		if (slotsAvailable <= 0) {
 			Alert.alert('Sin lugar', 'Ya completaste el total de jugadores.')
 			return
 		}
 		if (teamMode === 'two_teams') {
+			// Se oculta el listado mientras elige equipo: si queda visible, se puede
+			// volver a tocar al mismo jugador y terminar agregándolo dos veces.
+			clearSearch()
 			setPendingUser(u)
 		} else {
 			doAddUser(u, null)
@@ -112,15 +150,17 @@ export default function CreateMatchScreen() {
 	}
 
 	const addGuestParticipant = () => {
-		if (!searchQuery.trim()) return
+		const name = searchQuery.trim()
+		if (!name) return
 		if (slotsAvailable <= 0) {
 			Alert.alert('Sin lugar', 'Ya completaste el total de jugadores.')
 			return
 		}
 		if (teamMode === 'two_teams') {
-			setPendingGuestName(searchQuery.trim())
+			clearSearch()
+			setPendingGuestName(name)
 		} else {
-			doAddGuest(searchQuery.trim(), null)
+			doAddGuest(name, null)
 		}
 	}
 
@@ -180,14 +220,22 @@ export default function CreateMatchScreen() {
 			const match = await matchesService.create({
 				creator_id: user.id,
 				sport,
-				title: `${sports.find((s) => s.key === sport)?.label} ${totalPlayers > 6 ? '5' : '3'}v${totalPlayers > 6 ? '5' : '3'}`,
+				// El nombre es opcional: si no lo pusieron, va el sugerido. El cálculo
+				// que había acá era propio y estaba mal (cualquier partido de más de 6
+				// jugadores quedaba "5v5"); buildMatchTitle es el mismo que usa Editar.
+				title: title.trim() || suggestedTitle,
 				description: description.trim() || undefined,
 				starts_at,
 				venue_name: venueName.trim(),
 				venue_zone: venueZoneState.inputText.trim() || null,
 				venue_coordinates: venueZoneState.coords ?? undefined,
 				total_players: totalPlayers,
-				players_needed: playersNeeded,
+				// Contadores en cero: los participantes se insertan abajo (creador +
+				// confirmados) y el trigger on_participant_change los cuenta. Mandar
+				// acá el neto ya descontado hacía que se descontara dos veces y la
+				// tarjeta de Explorar mostrara menos lugares de los que había.
+				players_needed: totalPlayers,
+				current_players: 0,
 				skill_level: skillLevel,
 				is_mixed: false,
 				team_mode: teamMode,
@@ -356,7 +404,7 @@ export default function CreateMatchScreen() {
 				<View style={styles.headerSpacer} />
 			</View>
 
-			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps='handled'>
+			<ScrollView ref={scrollRef} style={styles.scrollView} contentContainerStyle={[styles.scrollContent, keyboardHeight > 0 && { paddingBottom: keyboardHeight + 40 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps='handled'>
 				{/* ── Deporte ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Deporte</Text>
@@ -367,6 +415,20 @@ export default function CreateMatchScreen() {
 							))}
 						</View>
 					</ScrollView>
+				</View>
+
+				{/* ── Nombre ── */}
+				<View style={[styles.section, { paddingTop: 0 }]} onLayout={onSectionLayout('title')}>
+					<Text style={styles.sectionTitle}>
+						Nombre del partido{' '}
+						<Text style={{ color: colors.textSecondaryDark, fontSize: 13, fontWeight: '400' }}>(opcional)</Text>
+					</Text>
+					<View style={styles.inputWrapper}>
+						<Ionicons name='pricetag-outline' size={20} color={colors.textSecondaryDark} />
+						{/* El placeholder muestra el título que se guarda si lo dejan vacío. */}
+						<TextInput style={styles.input} placeholder={suggestedTitle} placeholderTextColor={colors.textSecondaryDark} value={title} onChangeText={setTitle} maxLength={60} onFocus={onFieldFocus('title')} />
+					</View>
+					<Text style={[styles.levelHint, { marginTop: 6 }]}>Ponele un nombre (&quot;Picadito de los jueves&quot;) o dejalo vacío y queda &quot;{suggestedTitle}&quot;.</Text>
 				</View>
 
 				{/* ── Fecha y hora ── */}
@@ -408,15 +470,19 @@ export default function CreateMatchScreen() {
 				)}
 
 				{/* ── Ubicación ── */}
-				<View style={styles.section}>
+				<View style={styles.section} onLayout={onSectionLayout('location')}>
 					<Text style={styles.sectionTitle}>Ubicación</Text>
 					<View style={styles.inputWrapper}>
 						<Ionicons name='location' size={20} color={colors.textSecondaryDark} />
-						<TextInput style={styles.input} placeholder='Nombre de la cancha o club' placeholderTextColor={colors.textSecondaryDark} value={venueName} onChangeText={setVenueName} />
+						<TextInput style={styles.input} placeholder='Nombre de la cancha o club' placeholderTextColor={colors.textSecondaryDark} value={venueName} onChangeText={setVenueName} onFocus={onFieldFocus('location')} />
 					</View>
+				</View>
 
-					<Text style={[styles.sectionTitle, { marginTop: 16 }]}>Localidad del partido</Text>
-					<VenueZoneInput value={venueZoneState.inputText} coords={venueZoneState.coords} suggestions={venueZoneState.suggestions} searching={venueZoneState.searching} isDirty={venueZoneState.isDirty} onChangeText={venueZoneState.onChangeText} onSelect={venueZoneState.onSelect} onDetectGPS={venueZoneState.onDetectGPS} onDismiss={venueZoneState.onDismiss} />
+				{/* Sección propia — el hook del teclado necesita medir la `y` de la
+				    localidad contra el contenedor del scroll para poder subirla. */}
+				<View style={[styles.section, { paddingTop: 0 }]} onLayout={onSectionLayout('zone')}>
+					<Text style={styles.sectionTitle}>Localidad del partido</Text>
+					<VenueZoneInput value={venueZoneState.inputText} coords={venueZoneState.coords} suggestions={venueZoneState.suggestions} searching={venueZoneState.searching} isDirty={venueZoneState.isDirty} onChangeText={venueZoneState.onChangeText} onSelect={venueZoneState.onSelect} onDetectGPS={venueZoneState.onDetectGPS} onDismiss={venueZoneState.onDismiss} onFocus={onFieldFocus('zone')} />
 				</View>
 
 				{/* ── Jugadores ── */}
@@ -472,7 +538,7 @@ export default function CreateMatchScreen() {
 				</View>
 
 				{/* ── Participantes confirmados ── */}
-				<View style={styles.section}>
+				<View style={styles.section} onLayout={onSectionLayout('players')}>
 					<Text style={styles.sectionTitle}>
 						Jugadores confirmados{' '}
 						<Text style={{ color: colors.textSecondaryDark, fontSize: 13, fontWeight: '400' }}>
@@ -502,19 +568,19 @@ export default function CreateMatchScreen() {
 							<View style={styles.guestInputRow}>
 								<View style={[styles.inputWrapper, { flex: 1 }]}>
 									<Ionicons name='search' size={18} color={colors.textSecondaryDark} />
-									<TextInput style={styles.input} placeholder='Buscar usuario o agregar invitado' placeholderTextColor={colors.textSecondaryDark} value={searchQuery} onChangeText={handleSearch} returnKeyType='done' onSubmitEditing={addGuestParticipant} />
+									<TextInput style={styles.input} placeholder='Buscar usuario o agregar invitado' placeholderTextColor={colors.textSecondaryDark} value={searchQuery} onChangeText={handleSearch} returnKeyType='done' onSubmitEditing={addGuestParticipant} onFocus={onFieldFocus('players')} />
 									{searching && <ActivityIndicator size='small' color={colors.primary} />}
 								</View>
-								{searchQuery.trim().length > 0 && searchResults.length === 0 && !searching && (
+								{searchQuery.trim().length > 0 && visibleResults.length === 0 && !searching && (
 									<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={addGuestParticipant}>
 										<Ionicons name='add' size={20} color={colors.backgroundDark} />
 									</TouchableOpacity>
 								)}
 							</View>
 
-							{searchResults.length > 0 && (
+							{visibleResults.length > 0 && (
 								<View style={styles.searchResults}>
-									{searchResults.map((u) => (
+									{visibleResults.map((u) => (
 										<TouchableOpacity key={u.id} style={styles.searchRow} onPress={() => addUserParticipant(u)}>
 											{u.avatar_url ? (
 												<Image source={{ uri: u.avatar_url }} style={styles.searchAvatar} />
@@ -593,14 +659,15 @@ export default function CreateMatchScreen() {
 				</View>
 
 				{/* ── Observaciones ── */}
-				<View style={styles.section}>
+				<View style={styles.section} onLayout={onSectionLayout('notes')}>
 					<Text style={styles.sectionTitle}>Observaciones (opcional)</Text>
-					<TextInput style={styles.textArea} placeholder='Información adicional sobre el partido...' placeholderTextColor={colors.textSecondaryDark} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical='top' />
+					<TextInput style={styles.textArea} placeholder='Información adicional sobre el partido...' placeholderTextColor={colors.textSecondaryDark} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical='top' onFocus={onFieldFocus('notes')} />
 				</View>
 			</ScrollView>
 
-			{/* Footer */}
-			<View style={styles.footer}>
+			{/* Footer — se esconde con el teclado abierto: al estar en position absolute
+			    quedaría detrás del teclado, tapado a medias. */}
+			<View style={[styles.footer, keyboardHeight > 0 && { display: 'none' }]}>
 				<TouchableOpacity style={[styles.submitButton, isLoading && styles.submitButtonDisabled]} onPress={handleCreateMatch} disabled={isLoading}>
 					{isLoading ? (
 						<ActivityIndicator color={colors.backgroundDark} />

@@ -37,6 +37,59 @@ interface AuthProviderProps {
 	children: ReactNode
 }
 
+/* ============================
+   TIMEOUT HELPER
+============================ */
+
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error('Timeout')), ms)
+
+		promise
+			.then((value) => {
+				clearTimeout(timer)
+				resolve(value)
+			})
+			.catch((err) => {
+				clearTimeout(timer)
+				reject(err)
+			})
+	})
+}
+
+/**
+ * Recupera la sesión guardada, con reintentos.
+ *
+ * getSession() no es sólo leer el storage: si el access token venció, auth-js sale
+ * a la red a renovarlo. Con mala señal eso puede tardar o fallar, y eso NO significa
+ * "no hay sesión" sino "todavía no sabemos". Antes ese timeout limpiaba el estado y
+ * mandaba al login con la sesión guardada perfectamente válida — uno de los motivos
+ * del "se cierra sola la sesión".
+ *
+ * Si después de los reintentos sigue sin resolver, lanza y quien llama deja el
+ * estado como está: el ticker de auto-refresh de auth-js va a seguir intentando y el
+ * listener de onAuthStateChange avisa cuando lo logre.
+ */
+const loadSessionWithRetry = async (): Promise<Session | null> => {
+	const retryDelays = [0, 700, 1500]
+	let lastError: unknown = null
+
+	for (let i = 0; i < retryDelays.length; i++) {
+		if (retryDelays[i] > 0) {
+			await new Promise<void>((resolve) => setTimeout(resolve, retryDelays[i]))
+		}
+		try {
+			const { data } = await withTimeout(authService.getSession(), 10000)
+			return data.session ?? null
+		} catch (err) {
+			lastError = err
+			console.error(`[Auth] getSession intento ${i + 1} falló:`, err)
+		}
+	}
+
+	throw lastError instanceof Error ? lastError : new Error('No se pudo recuperar la sesión')
+}
+
 export function AuthProvider({ children }: AuthProviderProps) {
 	const [user, setUser] = useState<User | null>(null)
 	const [session, setSession] = useState<Session | null>(null)
@@ -45,26 +98,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const userIdRef = useRef<string | null>(null)
 	// Último usuario para el que ya se registró el push token (ver setupPushNotifications).
 	const pushSetupForUserRef = useRef<string | null>(null)
-
-	/* ============================
-	   TIMEOUT HELPER
-	============================ */
-
-	const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error('Timeout')), ms)
-
-			promise
-				.then((value) => {
-					clearTimeout(timer)
-					resolve(value)
-				})
-				.catch((err) => {
-					clearTimeout(timer)
-					reject(err)
-				})
-		})
-	}
 
 	/* ============================
 	   PUSH NOTIFICATIONS SETUP
@@ -116,8 +149,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 		const initialize = async () => {
 			try {
-				const { data } = await withTimeout(authService.getSession(), 10000)
-				const currentSession = data.session
+				const currentSession = await loadSessionWithRetry()
 
 				if (!isMounted) return
 
@@ -135,12 +167,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 					}
 					await setupPushNotifications(currentSession.user.id)
 				}
-			} catch {
+			} catch (err) {
 				if (!isMounted) return
-				// Solo limpiar si falló la carga de sesión (no de perfil)
-				setUser(null)
-				setSession(null)
-				setProfile(null)
+				// A propósito NO se limpia el estado: la sesión guardada puede seguir
+				// siendo válida y borrarla acá obligaba a loguearse de nuevo por un
+				// problema de red. Queda como no autenticado hasta que auth-js avise.
+				console.error('[Auth] no se pudo recuperar la sesión al inicializar:', err)
 			} finally {
 				if (isMounted) setIsLoading(false)
 			}

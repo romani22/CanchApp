@@ -176,14 +176,12 @@ export default function ProfileScreen() {
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<HeaderProfile isEditing={isEditing} name={editableName} onChangeName={handleChangeName} />
 
-				{/* AuthContext.loadFullProfile ya mergea user_stats dentro de `profile`,
-				    así que no hace falta un segundo fetch ni un spinner propio. */}
 				{profile && <StatsProfile totalMatches={profile.total_matches} totalWins={profile.total_wins} rating={profile.rating} />}
 
 				{/* Deportes */}
 				<View style={styles.section}>
 					<View style={styles.sectionHeader}>
-						<Text style={styles.sectionTitle}>Deportes Favoritos</Text>
+						<Text style={styles.sectionTitle}>Deportes de interés</Text>
 						{isEditing && (
 							<TouchableOpacity onPress={() => setSportsModalVisible(true)}>
 								<Ionicons name='add-circle' size={24} color={colors.primary} />
@@ -239,34 +237,12 @@ export default function ProfileScreen() {
 						<View style={styles.passwordModal}>
 							<Text style={styles.modalTitle}>Cambiar contraseña</Text>
 
-							<TextInput
-								placeholder='Nueva contraseña'
-								placeholderTextColor='#999'
-								style={styles.modalInput}
-								secureTextEntry
-								value={newPassword}
-								onChangeText={setNewPassword}
-							/>
+							<TextInput placeholder='Nueva contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={newPassword} onChangeText={setNewPassword} />
 
-							<TextInput
-								placeholder='Confirmar contraseña'
-								placeholderTextColor='#999'
-								style={styles.modalInput}
-								secureTextEntry
-								value={confirmPassword}
-								onChangeText={setConfirmPassword}
-							/>
+							<TextInput placeholder='Confirmar contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
 
-							<TouchableOpacity
-								style={[styles.modalButton, changingPassword && { opacity: 0.6 }]}
-								onPress={handleChangePassword}
-								disabled={changingPassword}
-							>
-								{changingPassword ? (
-									<ActivityIndicator color='white' />
-								) : (
-									<Text style={styles.modalButtonText}>Guardar</Text>
-								)}
+							<TouchableOpacity style={[styles.modalButton, changingPassword && { opacity: 0.6 }]} onPress={handleChangePassword} disabled={changingPassword}>
+								{changingPassword ? <ActivityIndicator color='white' /> : <Text style={styles.modalButtonText}>Guardar</Text>}
 							</TouchableOpacity>
 
 							<TouchableOpacity style={styles.modalCancel} onPress={() => setPasswordModalVisible(false)}>
@@ -278,15 +254,7 @@ export default function ProfileScreen() {
 			)}
 
 			{/* Modal confirmar cambios */}
-			<ConfirmChangesModal
-				visible={confirmVisible}
-				title='¿Guardar cambios?'
-				description='Se actualizarán tu nombre, deportes favoritos y tu zona.'
-				onConfirm={handleConfirmSave}
-				onDiscard={handleDiscardChanges}
-				onCancel={() => setConfirmVisible(false)}
-				loading={saving}
-			/>
+			<ConfirmChangesModal visible={confirmVisible} title='¿Guardar cambios?' description='Se actualizarán tu nombre, deportes favoritos y tu zona.' onConfirm={handleConfirmSave} onDiscard={handleDiscardChanges} onCancel={() => setConfirmVisible(false)} loading={saving} />
 		</SafeAreaView>
 	)
 }

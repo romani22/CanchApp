@@ -16,7 +16,7 @@ function HeadViewProfile({ isEditing, onToggleEdit }: Props) {
 				<Ionicons name='chevron-back' size={24} color={colors.textPrimaryDark} />
 			</TouchableOpacity>
 
-			<Text style={styles.headerTitle}>Mi Perfil Deportivo</Text>
+			<Text style={styles.headerTitle}>Mi perfil deportivo</Text>
 
 			<TouchableOpacity onPress={onToggleEdit} style={styles.editButton}>
 				{isEditing ? <Ionicons name='save' size={18} color={colors.primary} /> : <Ionicons name='pencil' size={18} color={colors.primary} />}

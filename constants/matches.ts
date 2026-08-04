@@ -66,8 +66,32 @@ export const TEAM_CONFIG = {
 	B: { label: 'Equipo B', color: '#f59e0b', bg: '#f59e0b18', border: '#f59e0b40' },
 } as const
 
+/** Título automático: "Futbol 8vs8". Es lo que se guarda si no le ponen nombre. */
 export const buildMatchTitle = (sport: SportType, totalPlayers: number): string => {
 	const sportLabel = sports.find((s) => s.key === sport)?.label ?? sport
 	const playersPerSide = Math.floor(totalPlayers / 2)
 	return `${sportLabel} ${playersPerSide}vs${playersPerSide}`
+}
+
+/**
+ * ¿El título es uno de los automáticos, o un nombre que puso el creador?
+ *
+ * Se usa al editar: con un nombre propio se respeta lo escrito, y con uno
+ * automático el campo queda vacío para que siga al deporte y al total de jugadores.
+ *
+ * Acepta cualquier cantidad de jugadores y también la `v` sola del formato viejo
+ * ("Futbol 5v5"): Create armaba el título con un cálculo propio que dejaba "5v5"
+ * en todo partido de más de 6 jugadores. Esos títulos no los eligió nadie, así que
+ * cuentan como automáticos y se recalculan.
+ */
+export const isAutoMatchTitle = (title: string, sport: SportType): boolean => {
+	const sportLabel = sports.find((s) => s.key === sport)?.label ?? sport
+	const trimmed = title.trim()
+	const prefix = `${sportLabel} `
+
+	if (trimmed.toLowerCase().startsWith(prefix.toLowerCase())) {
+		return /^\d+vs?\d+$/i.test(trimmed.slice(prefix.length))
+	}
+	// El deporte solo también es automático: no aporta nada sobre el badge de deporte.
+	return trimmed.toLowerCase() === sportLabel.toLowerCase()
 }

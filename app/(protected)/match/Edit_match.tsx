@@ -2,8 +2,9 @@ import { styles } from '@/assets/styles/Match.styles'
 import { Chip } from '@/components/ui/Chip'
 import Loader from '@/components/ui/Loader'
 import { VenueZoneInput } from '@/components/ui/VenueZoneInput'
-import { TEAM_CONFIG, buildMatchTitle, levels, sports } from '@/constants/matches'
+import { TEAM_CONFIG, buildMatchTitle, isAutoMatchTitle, levels, sports } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
+import { useKeyboardAwareScroll } from '@/hooks/useKeyboardAwareScroll'
 import { parseCoords, useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
@@ -34,6 +35,8 @@ export default function EditMatchScreen() {
 	const [saving, setSaving] = useState(false)
 
 	const [sport, setSport] = useState<SportType>('futbol')
+	// Vacío = sin nombre propio, se usa el sugerido (ver loadMatch).
+	const [title, setTitle] = useState('')
 	const [date, setDate] = useState(new Date())
 	const [time, setTime] = useState(new Date())
 	const [showDatePicker, setShowDatePicker] = useState(false)
@@ -49,10 +52,17 @@ export default function EditMatchScreen() {
 	const [participants, setParticipants] = useState<ParticipantRow[]>([])
 	const [newGuestName, setNewGuestName] = useState('')
 	const [movingId, setMovingId] = useState<string | null>(null)
+	const [addingGuest, setAddingGuest] = useState(false)
+
+	// Título sugerido — es lo que se guarda si el campo queda vacío.
+	const suggestedTitle = buildMatchTitle(sport, totalPlayers)
 
 	const playersNeeded = Math.max(0, totalPlayers - participants.length)
 	const slotsAvailable = totalPlayers - participants.length
 	const perTeam = Math.floor(totalPlayers / 2)
+
+	// Teclado: sin esto el campo enfocado queda tapado (ver useKeyboardAwareScroll)
+	const { scrollRef, keyboardHeight, onSectionLayout, onFieldFocus } = useKeyboardAwareScroll()
 
 	const loadMatch = useCallback(async () => {
 		try {
@@ -70,6 +80,10 @@ export default function EditMatchScreen() {
 			}
 
 			setSport(data.sport)
+			// El título guardado puede ser un nombre puesto a mano o uno automático. Los
+			// automáticos dejan el campo vacío para que sigan al deporte y al total de
+			// jugadores si los cambian; un nombre propio se prellena y no lo pisa nadie.
+			setTitle(isAutoMatchTitle(data.title, data.sport) ? '' : data.title)
 			setVenueName(data.venue_name)
 			setInitialZone(data.venue_zone || '')
 			// parseCoords, no un cast: Supabase entrega POINT como string "(lon,lat)".
@@ -172,13 +186,16 @@ export default function EditMatchScreen() {
 			setSaving(true)
 			await matchesService.update(id as string, {
 				sport,
-				title: buildMatchTitle(sport, totalPlayers),
+				title: title.trim() || suggestedTitle,
 				starts_at,
 				venue_name: venueName.trim(),
 				venue_zone: venueZoneState.inputText.trim() || null,
 				venue_coordinates: venueZoneState.coords ?? undefined,
 				total_players: totalPlayers,
+				// Los dos contadores juntos: el trigger los recalcula en cada alta/baja
+				// de participante, pero acá cambia total_players y hay que reflejarlo.
 				players_needed: playersNeeded,
+				current_players: participants.length,
 				skill_level: skillLevel,
 				team_mode: teamMode,
 				description: description.trim() || null,
@@ -223,6 +240,9 @@ export default function EditMatchScreen() {
 
 	// ── Agregar invitado ─────────────────────────────────────────────
 	const handleAddGuest = async (teamSlot?: TeamSlot) => {
+		// El alta es asíncrona: sin este candado, dos toques seguidos en "Equipo A"
+		// insertan al mismo jugador dos veces.
+		if (addingGuest) return
 		if (!newGuestName.trim()) return
 		if (slotsAvailable <= 0) {
 			Alert.alert('Sin lugar', 'Ya completaste el total de jugadores.')
@@ -235,6 +255,7 @@ export default function EditMatchScreen() {
 			return
 		}
 
+		setAddingGuest(true)
 		try {
 			const { error } = await matchParticipantsService.addGuest(id as string, newGuestName.trim(), teamSlot)
 			if (error) throw error
@@ -244,6 +265,8 @@ export default function EditMatchScreen() {
 		} catch (err) {
 			console.error('[EditMatch] Error agregando invitado:', err)
 			Alert.alert('Error', 'No se pudo agregar el jugador.')
+		} finally {
+			setAddingGuest(false)
 		}
 	}
 
@@ -266,7 +289,7 @@ export default function EditMatchScreen() {
 				<View style={styles.headerSpacer} />
 			</View>
 
-			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps='handled'>
+			<ScrollView ref={scrollRef} style={styles.scrollView} contentContainerStyle={[styles.scrollContent, keyboardHeight > 0 && { paddingBottom: keyboardHeight + 40 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps='handled'>
 				{/* ── Deporte ── */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Deporte</Text>
@@ -277,6 +300,19 @@ export default function EditMatchScreen() {
 							))}
 						</View>
 					</ScrollView>
+				</View>
+
+				{/* ── Nombre ── */}
+				<View style={[styles.section, { paddingTop: 0 }]} onLayout={onSectionLayout('title')}>
+					<Text style={styles.sectionTitle}>
+						Nombre del partido{' '}
+						<Text style={{ color: colors.textSecondaryDark, fontSize: 13, fontWeight: '400' }}>(opcional)</Text>
+					</Text>
+					<View style={styles.inputWrapper}>
+						<Ionicons name='pricetag-outline' size={20} color={colors.textSecondaryDark} />
+						<TextInput style={styles.input} placeholder={suggestedTitle} placeholderTextColor={colors.textSecondaryDark} value={title} onChangeText={setTitle} maxLength={60} onFocus={onFieldFocus('title')} />
+					</View>
+					<Text style={[styles.levelHint, { marginTop: 6 }]}>Vacío queda &quot;{suggestedTitle}&quot;.</Text>
 				</View>
 
 				{/* ── Fecha y hora ── */}
@@ -318,15 +354,19 @@ export default function EditMatchScreen() {
 				)}
 
 				{/* ── Ubicación ── */}
-				<View style={styles.section}>
+				<View style={styles.section} onLayout={onSectionLayout('location')}>
 					<Text style={styles.sectionTitle}>Ubicación</Text>
 					<View style={styles.inputWrapper}>
 						<Ionicons name='location' size={20} color={colors.textSecondaryDark} />
-						<TextInput style={styles.input} placeholder='Nombre de la cancha o club' placeholderTextColor={colors.textSecondaryDark} value={venueName} onChangeText={setVenueName} />
+						<TextInput style={styles.input} placeholder='Nombre de la cancha o club' placeholderTextColor={colors.textSecondaryDark} value={venueName} onChangeText={setVenueName} onFocus={onFieldFocus('location')} />
 					</View>
+				</View>
 
-					<Text style={[styles.sectionTitle, { marginTop: 16 }]}>Localidad del partido</Text>
-					<VenueZoneInput value={venueZoneState.inputText} coords={venueZoneState.coords} suggestions={venueZoneState.suggestions} searching={venueZoneState.searching} isDirty={venueZoneState.isDirty} onChangeText={venueZoneState.onChangeText} onSelect={venueZoneState.onSelect} onDetectGPS={venueZoneState.onDetectGPS} onDismiss={venueZoneState.onDismiss} />
+				{/* Sección propia — el hook del teclado necesita medir la `y` de la
+				    localidad contra el contenedor del scroll para poder subirla. */}
+				<View style={[styles.section, { paddingTop: 0 }]} onLayout={onSectionLayout('zone')}>
+					<Text style={styles.sectionTitle}>Localidad del partido</Text>
+					<VenueZoneInput value={venueZoneState.inputText} coords={venueZoneState.coords} suggestions={venueZoneState.suggestions} searching={venueZoneState.searching} isDirty={venueZoneState.isDirty} onChangeText={venueZoneState.onChangeText} onSelect={venueZoneState.onSelect} onDetectGPS={venueZoneState.onDetectGPS} onDismiss={venueZoneState.onDismiss} onFocus={onFieldFocus('zone')} />
 				</View>
 
 				{/* ── Jugadores ── */}
@@ -382,7 +422,7 @@ export default function EditMatchScreen() {
 				</View>
 
 				{/* ── Participantes actuales ── */}
-				<View style={styles.section}>
+				<View style={styles.section} onLayout={onSectionLayout('players')}>
 					<Text style={styles.sectionTitle}>
 						Jugadores confirmados{' '}
 						<Text style={{ color: colors.textSecondaryDark, fontSize: 13, fontWeight: '400' }}>
@@ -532,7 +572,7 @@ export default function EditMatchScreen() {
 								<View style={[styles.guestInputRow, { marginTop: 12 }]}>
 									<View style={[styles.inputWrapper, { flex: 1 }]}>
 										<Ionicons name='person-add-outline' size={18} color={colors.textSecondaryDark} />
-										<TextInput style={styles.input} placeholder='Agregar invitado por nombre' placeholderTextColor={colors.textSecondaryDark} value={newGuestName} onChangeText={setNewGuestName} onSubmitEditing={() => handleAddGuest()} returnKeyType='done' />
+										<TextInput style={styles.input} placeholder='Agregar invitado por nombre' placeholderTextColor={colors.textSecondaryDark} value={newGuestName} onChangeText={setNewGuestName} onSubmitEditing={() => handleAddGuest()} returnKeyType='done' onFocus={onFieldFocus('players')} />
 									</View>
 									{newGuestName.trim().length > 0 && (
 										<TouchableOpacity style={[styles.counterButton, styles.counterButtonActive]} onPress={() => handleAddGuest()}>
@@ -563,14 +603,15 @@ export default function EditMatchScreen() {
 				</View>
 
 				{/* ── Observaciones ── */}
-				<View style={styles.section}>
+				<View style={styles.section} onLayout={onSectionLayout('notes')}>
 					<Text style={styles.sectionTitle}>Observaciones (opcional)</Text>
-					<TextInput style={styles.textArea} placeholder='Información adicional sobre el partido...' placeholderTextColor={colors.textSecondaryDark} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical='top' />
+					<TextInput style={styles.textArea} placeholder='Información adicional sobre el partido...' placeholderTextColor={colors.textSecondaryDark} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical='top' onFocus={onFieldFocus('notes')} />
 				</View>
 			</ScrollView>
 
-			{/* Footer */}
-			<View style={styles.footer}>
+			{/* Footer — se esconde con el teclado abierto: al estar en position absolute
+			    quedaría detrás del teclado, tapado a medias. */}
+			<View style={[styles.footer, keyboardHeight > 0 && { display: 'none' }]}>
 				<TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>
 					{saving ? (
 						<ActivityIndicator color={colors.backgroundDark} />

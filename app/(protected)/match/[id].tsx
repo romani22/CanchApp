@@ -238,16 +238,13 @@ export default function MatchDetail() {
 						<ParticipantsMatch match={match} />
 					)}
 
-					{/* Ubicación */}
-					<View style={styles.mapContainer}>
-						<View style={styles.mapOverlay}>
-							<Ionicons name='location' size={24} color={colors.primary} />
-							<Text style={styles.mapText}>{match.venue_address || match.venue_name}</Text>
-						</View>
-					</View>
+					{/* Acá iba un recuadro con el pin y el nombre de la cancha. Era el
+					    marco de un mapa que nunca se dibujó, así que sólo repetía el
+					    venue_name que ya está arriba del título. Se saca hasta que haya
+					    mapa de verdad. */}
 
 					{match.description ? (
-						<View style={[styles.section, { marginTop: 8 }]}>
+						<View style={[styles.section, { marginTop: 20 }]}>
 							<Text style={styles.sectionTitle}>Observaciones</Text>
 							<Text style={styles.subtitle}>{match.description}</Text>
 						</View>

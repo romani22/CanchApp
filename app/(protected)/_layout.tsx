@@ -1,13 +1,22 @@
+import { LockScreen } from '@/components/LockScreen'
+import { useAppLock } from '@/context/AppLockContext'
 import { useAuth } from '@/context/AuthContext'
 import { Redirect, Stack } from 'expo-router'
 
 export default function ProtectedLayout() {
 	const { isAuthenticated, isLoading, profile } = useAuth()
+	const { isLocked } = useAppLock()
 
 	if (isLoading) return null
 
 	if (!isAuthenticated) {
 		return <Redirect href='/(auth)/Login' />
+	}
+
+	// Bloqueo por inactividad: tapa el contenido sin desmontar la sesión ni tocar la
+	// navegación, así al desbloquear el usuario vuelve a la pantalla donde estaba.
+	if (isLocked) {
+		return <LockScreen />
 	}
 
 	// Único punto donde se intercepta el perfil incompleto: cubre login con Google,

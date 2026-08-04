@@ -252,39 +252,9 @@ export const styles = StyleSheet.create({
 		color: '#BDC3C7',
 		fontSize: 16,
 	},
-	mapContainer: {
-		marginTop: 30,
-		height: 150,
-		borderRadius: 15,
-		overflow: 'hidden',
-		position: 'relative',
-	},
-	mapImage: {
-		width: '100%',
-		height: '100%',
-		opacity: 0.6,
-	},
-	mapOverlay: {
-		position: 'absolute',
-		top: '30%',
-		left: '40%',
-		alignItems: 'center',
-	},
-	mapText: {
-		color: 'white',
-		fontWeight: 'bold',
-		fontSize: 12,
-	},
-	verEnMapa: {
-		position: 'absolute',
-		bottom: 10,
-		left: 10,
-	},
-	verEnMapaText: {
-		color: '#BDC3C7',
-		fontSize: 12,
-		textDecorationLine: 'underline',
-	},
+	// Los estilos del mapa (mapContainer, mapImage, mapOverlay, mapText, verEnMapa,
+	// verEnMapaText) se borraron junto con el recuadro del detalle: no había mapa que
+	// estilar. Cuando se agregue uno de verdad va a necesitar los suyos.
 	statsRow: {
 		flexDirection: 'row',
 		backgroundColor: colors.surfaceElevated, // Verde muy oscuro

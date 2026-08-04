@@ -33,12 +33,16 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 
 	const isAlreadyJoined = match.participants?.some((p) => p.user_id === user?.id)
 
-	// Usar players_needed de la DB — valor real guardado al crear/actualizar el partido
-	const playersNeeded = match.players_needed ?? Math.max(0, match.total_players - (match.current_players || 0))
-	const isFull = playersNeeded === 0
-
 	// Participantes reales con datos para mostrar en el avatar stack
 	const participants = match.participants ?? []
+
+	// Contar los participantes traídos, igual que el detalle: si la tarjeta lee la
+	// columna players_needed y el detalle cuenta filas, cualquier desfase de la
+	// columna hace que los dos muestren números distintos (era el caso: "Faltan 8"
+	// en Explorar con un solo jugador anotado). La columna queda de respaldo para
+	// consultas que no traigan la relación.
+	const playersNeeded = match.participants ? Math.max(0, match.total_players - participants.length) : (match.players_needed ?? Math.max(0, match.total_players - (match.current_players || 0)))
+	const isFull = playersNeeded === 0
 	const visibleParticipants = participants.slice(0, MAX_VISIBLE_AVATARS)
 	const extraCount = participants.length - MAX_VISIBLE_AVATARS
 
