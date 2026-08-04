@@ -1,4 +1,4 @@
-import { levelForSport, levelLabels } from '@/constants/matches'
+import { TEAM_CONFIG, levelForSport, levelLabels } from '@/constants/matches'
 import { requestsService } from '@/services/requests.service'
 import { JoinRequestWithUser } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
@@ -165,16 +165,25 @@ function RequestCard({ request, onAccept, onReject, isProcessing }: RequestCardP
 						</View>
 					</View>
 
-					{/* Nivel en el deporte del partido al que se está postulando. */}
-					{(() => {
-						const nivel = levelForSport(request.user.sport_levels, request.match.sport)
-						if (!nivel) return null
-						return (
-							<View className='bg-gray-100 px-3 py-1 rounded-full'>
-								<Text className='text-gray-600 text-xs font-medium'>{levelLabels[nivel]}</Text>
+					<View className='items-end'>
+						{/* Nivel en el deporte del partido al que se está postulando. */}
+						{(() => {
+							const nivel = levelForSport(request.user.sport_levels, request.match.sport)
+							if (!nivel) return null
+							return (
+								<View className='bg-gray-100 px-3 py-1 rounded-full'>
+									<Text className='text-gray-600 text-xs font-medium'>{levelLabels[nivel]}</Text>
+								</View>
+							)
+						})()}
+
+						{/* Equipo que pidió: si se acepta, entra en ese equipo (022). */}
+						{request.team_slot && (
+							<View className='bg-blue-50 px-3 py-1 rounded-full mt-1'>
+								<Text className='text-blue-600 text-xs font-medium'>{TEAM_CONFIG[request.team_slot].label}</Text>
 							</View>
-						)
-					})()}
+						)}
+					</View>
 				</View>
 			</View>
 

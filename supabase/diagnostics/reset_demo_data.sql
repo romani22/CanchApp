@@ -26,7 +26,9 @@
 TRUNCATE TABLE public.match_ratings,
     public.match_players,
     public.match_participants,
-    public.match_scores,
+    -- match_scores (003) la reemplazaron match_results y match_player_stats en 021.
+    public.match_results,
+    public.match_player_stats,
     public.join_requests,
     public.notifications,
     public.push_tokens,

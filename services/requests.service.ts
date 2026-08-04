@@ -1,10 +1,14 @@
 import { repositories } from '@/repositories'
 import type { SubscriptionHandle } from '@/repositories/types'
-import type { JoinRequest, JoinRequestWithUser } from '@/types/database.types'
+import type { JoinRequest, JoinRequestWithUser, TeamSlot } from '@/types/database.types'
 
 export const requestsService = {
-	async createJoin(matchId: string, userId: string, message?: string) {
-		return repositories.joinRequests.create(matchId, userId, message)
+	async createJoin(matchId: string, userId: string, message?: string, teamSlot?: TeamSlot) {
+		return repositories.joinRequests.create(matchId, userId, message, teamSlot)
+	},
+
+	async getMine(matchId: string, userId: string): Promise<JoinRequest | null> {
+		return repositories.joinRequests.getMine(matchId, userId)
 	},
 
 	async getMatch(matchId: string): Promise<JoinRequestWithUser[]> {

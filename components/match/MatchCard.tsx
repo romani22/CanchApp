@@ -155,7 +155,9 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 							<Text style={[styles.playersText, isFull && { color: colors.success }]}>{isFull ? '¡Completo!' : `Faltan ${playersNeeded}`}</Text>
 						</View>
 
-						{/* Botón unirse / ya unido */}
+						{/* Botón solicitar / ya unido. "Solicitar" y no "Unirme": entrar a un
+						    partido pasa por la aprobación del creador, y este botón sólo
+						    lleva al detalle, donde se manda la solicitud. */}
 						{onJoin && !isAlreadyJoined && !isFull && (
 							<TouchableOpacity
 								style={styles.joinButton}
@@ -164,7 +166,7 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 									onJoin()
 								}}
 							>
-								<Text style={styles.joinButtonText}>Unirme</Text>
+								<Text style={styles.joinButtonText}>Solicitar</Text>
 							</TouchableOpacity>
 						)}
 						{isAlreadyJoined && (

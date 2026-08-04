@@ -3,8 +3,9 @@ import type { SubscriptionHandle } from '@/repositories/types'
 import type { Guest, TeamSlot } from '@/types/database.types'
 
 export const matchParticipantsService = {
-	async join(matchId: string, userId: string, teamSlot?: TeamSlot) {
-		return repositories.matchParticipants.join(matchId, userId, teamSlot)
+	/** Sólo el creador: un jugador se suma pidiendo entrar (requestsService.createJoin). */
+	async addParticipant(matchId: string, userId: string, teamSlot?: TeamSlot) {
+		return repositories.matchParticipants.addParticipant(matchId, userId, teamSlot)
 	},
 
 	async assignTeam(participantId: string, teamSlot: TeamSlot | null) {

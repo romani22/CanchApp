@@ -242,10 +242,11 @@ export default function CreateMatchScreen() {
 			})
 
 			// Unirse como creador con su equipo asignado (si aplica)
-			await matchParticipantsService.join(match.id, user.id, creatorTeamSlot ?? undefined)
+			await matchParticipantsService.addParticipant(match.id, user.id, creatorTeamSlot ?? undefined)
 
-			// Agregar participantes confirmados con su equipo
-			await Promise.all(confirmed.map((p) => (p.type === 'user' ? matchParticipantsService.join(match.id, (p as any).userId, p.teamSlot ?? undefined) : matchParticipantsService.addGuest(match.id, p.name, p.teamSlot ?? undefined))))
+			// Agregar participantes confirmados con su equipo. Los pone el creador, así
+			// que entran directo: la aprobación es para quien pide entrar desde Explorar.
+			await Promise.all(confirmed.map((p) => (p.type === 'user' ? matchParticipantsService.addParticipant(match.id, (p as any).userId, p.teamSlot ?? undefined) : matchParticipantsService.addGuest(match.id, p.name, p.teamSlot ?? undefined))))
 
 			// Programar recordatorio local 10 minutos antes del partido para el creador
 			pushNotificationService.scheduleMatchReminder(match.id, match.title, match.venue_name, new Date(starts_at)).catch((err) => console.warn('[Create] Could not schedule reminder:', err))

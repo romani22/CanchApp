@@ -2,7 +2,13 @@ import type { Guest, MatchParticipant, Profile, TeamSlot } from '@/types/databas
 import type { SubscriptionHandle } from '../types'
 
 export interface IMatchParticipantRepository {
-	join(matchId: string, userId: string, teamSlot?: TeamSlot): Promise<{ error: Error | null }>
+	/**
+	 * Suma un usuario registrado al partido. Camino del CREADOR: desde 022 la
+	 * política de INSERT de match_participants sólo lo acepta a él, así que un
+	 * jugador no puede usar esto para anotarse — para eso están las solicitudes
+	 * (IJoinRequestRepository.create). Se llamaba join(), que invitaba a lo otro.
+	 */
+	addParticipant(matchId: string, userId: string, teamSlot?: TeamSlot): Promise<{ error: Error | null }>
 	assignTeam(participantId: string, teamSlot: TeamSlot | null): Promise<{ error: Error | null }>
 	assignTeamBulk(matchId: string, assignments: { participantId: string; teamSlot: TeamSlot | null }[]): Promise<PromiseSettledResult<{ error: Error | null }>[]>
 	clearAllTeamSlots(matchId: string): Promise<{ error: Error | null }>

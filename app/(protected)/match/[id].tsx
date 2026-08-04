@@ -9,8 +9,9 @@ import { matchResultsService } from '@/services/matchResults.service'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
+import { requestsService } from '@/services/requests.service'
 import { colors } from '@/theme/colors'
-import { MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
+import { JoinRequest, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
 import { getSportImage } from '@/utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { format, isPast, parseISO } from 'date-fns'
@@ -25,6 +26,10 @@ export default function MatchDetail() {
 
 	const [match, setMatch] = useState<MatchWithCreator | null>(null)
 	const [result, setResult] = useState<MatchResultWithPlayers | null>(null)
+	// Mi solicitud en este partido, en cualquier estado (null = nunca pedí entrar).
+	const [myRequest, setMyRequest] = useState<JoinRequest | null>(null)
+	// Solicitudes pendientes que tiene que responder el creador.
+	const [pendingCount, setPendingCount] = useState(0)
 	const [loading, setLoading] = useState(true)
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
@@ -51,13 +56,26 @@ export default function MatchDetail() {
 			}
 			setMatch(data)
 			setResult(resultData)
+
+			if (!user) return
+
+			// Al creador le interesa cuántas solicitudes tiene esperando; al resto, si
+			// la suya sigue pendiente. Son consultas distintas: la lista completa del
+			// partido sólo la puede leer el creador (RLS de join_requests).
+			if (data.creator_id === user.id) {
+				const pending = await requestsService.getMatch(id as string).catch(() => [])
+				setPendingCount(pending.length)
+			} else {
+				const mine = await requestsService.getMine(id as string, user.id).catch(() => null)
+				setMyRequest(mine)
+			}
 		} catch (err) {
 			console.error('[MatchDetail] Error:', err)
 			setNotFound(true)
 		} finally {
 			setLoading(false)
 		}
-	}, [id])
+	}, [id, user])
 
 	useFocusEffect(
 		useCallback(() => {
@@ -73,38 +91,90 @@ export default function MatchDetail() {
 		// Para que a los jugadores les aparezca el resultado en cuanto el creador lo
 		// carga, sin salir y volver a entrar a la pantalla.
 		const results = matchResultsService.subscribe(id as string, () => loadMatch())
+		// Y para que el creador vea llegar las solicitudes, y el que pidió entrar vea
+		// la respuesta, sin refrescar.
+		const requests = requestsService.subscribe(id as string, () => loadMatch())
 		return () => {
 			participants.unsubscribe()
 			results.unsubscribe()
+			requests.unsubscribe()
 		}
 	}, [id, loadMatch])
 
-	// ── Join ──────────────────────────────────────────────────────────────
+	// Derivados que necesitan los hooks de abajo. Van acá arriba porque los early
+	// returns del render (loading / notFound) están después: un hook no puede
+	// quedar detrás de un return condicional.
+	const isParticipant = !!user && (match?.participants?.some((p) => p.user_id === user.id) ?? false)
+	const hasPendingRequest = myRequest?.status === 'pending'
+	const wasRejected = myRequest?.status === 'rejected'
+
+	// Recordatorio local del partido. Antes se programaba al apretar "Unirme", que
+	// ahora sólo manda una solicitud: el momento en que el jugador está realmente
+	// adentro es cuando abre un partido al que ya lo aceptaron.
+	const matchId = match?.id
+	const matchTitle = match?.title
+	const matchVenue = match?.venue_name
+	const matchStartsAt = match?.starts_at
+	const matchStatus = match?.status
+
+	useEffect(() => {
+		if (!isParticipant || !matchId || !matchStartsAt || !matchTitle || !matchVenue) return
+		if (matchStatus === 'cancelled' || isPast(parseISO(matchStartsAt))) return
+
+		let stale = false
+		// cancelar y volver a programar: scheduleMatchReminder no deduplica, así que
+		// sin esto cada apertura del partido dejaría un recordatorio más.
+		pushNotificationService
+			.cancelMatchReminder(matchId)
+			.then(() => {
+				if (stale) return
+				return pushNotificationService.scheduleMatchReminder(matchId, matchTitle, matchVenue, new Date(matchStartsAt))
+			})
+			.catch((err) => console.warn('[MatchDetail] No se pudo programar el recordatorio:', err))
+
+		return () => {
+			stale = true
+		}
+	}, [isParticipant, matchId, matchTitle, matchVenue, matchStartsAt, matchStatus])
+
+	// ── Solicitar entrar ──────────────────────────────────────────────────
+	// Nadie se anota solo: se pide entrar y el creador acepta o rechaza. Antes esto
+	// insertaba directo en match_participants, así que cualquiera que viera el
+	// partido en Explorar se metía sin que el creador pudiera decir nada.
 	const handleJoinPress = () => {
-		if (!match || !user || !isOpen || isFull || isParticipant) return
+		if (!match || !user || !isOpen || isFull || isParticipant || hasPendingRequest) return
 		if (match.team_mode === 'two_teams') {
 			setTeamPickerVisible(true)
 		} else {
-			doJoin()
+			doRequestJoin()
 		}
 	}
 
-	const doJoin = async (teamSlot?: TeamSlot) => {
+	const doRequestJoin = async (teamSlot?: TeamSlot) => {
 		setTeamPickerVisible(false)
 		try {
 			setActionLoading(true)
-			const { error } = await matchParticipantsService.join(id as string, user!.id, teamSlot)
-			if (error) throw error
+			await requestsService.createJoin(id as string, user!.id, undefined, teamSlot)
 			await loadMatch()
-			// Schedule a local reminder 10 minutes before the match starts
-			if (match?.starts_at) {
-				pushNotificationService
-					.scheduleMatchReminder(id as string, match.title, match.venue_name, new Date(match.starts_at))
-					.catch((err) => console.warn('[MatchDetail] Could not schedule reminder:', err))
-			}
+			Alert.alert('Solicitud enviada', 'El creador del partido tiene que aceptarte. Te avisamos cuando responda.')
 		} catch (err) {
-			console.error('[MatchDetail] Error uniéndose:', err)
-			Alert.alert('Error', 'No se pudo unir al partido. Intentá de nuevo.')
+			console.error('[MatchDetail] Error solicitando unirse:', err)
+			Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo enviar la solicitud. Intentá de nuevo.')
+		} finally {
+			setActionLoading(false)
+		}
+	}
+
+	const handleCancelRequest = async () => {
+		if (!myRequest) return
+		try {
+			setActionLoading(true)
+			await requestsService.cancel(myRequest.id)
+			setMyRequest(null)
+			await loadMatch()
+		} catch (err) {
+			console.error('[MatchDetail] Error cancelando solicitud:', err)
+			Alert.alert('Error', 'No se pudo cancelar la solicitud. Intentá de nuevo.')
 		} finally {
 			setActionLoading(false)
 		}
@@ -180,7 +250,6 @@ export default function MatchDetail() {
 	const isOpen = match.status === 'open'
 	const isCancelled = match.status === 'cancelled'
 	const isCreator = match.creator_id === user?.id
-	const isParticipant = match.participants?.some((p) => p.user_id === user?.id) ?? false
 	const hasTeams = match.team_mode === 'two_teams'
 	const matchDate = parseISO(match.starts_at)
 	// end_time quedó como TIME desde el schema inicial (006 sólo migró la fecha y la
@@ -265,6 +334,32 @@ export default function MatchDetail() {
 					    venue_name que ya está arriba del título. Se saca hasta que haya
 					    mapa de verdad. */}
 
+					{/* Solicitudes pendientes — sólo las ve el creador */}
+					{isCreator && pendingCount > 0 && !isCancelled && (
+						<TouchableOpacity style={localStyles.requestsBanner} onPress={() => router.push({ pathname: '/match/requests', params: { id: id as string } })}>
+							<Ionicons name='person-add' size={20} color={colors.primary} />
+							<Text style={localStyles.requestsBannerText}>
+								{pendingCount} {pendingCount === 1 ? 'jugador quiere' : 'jugadores quieren'} unirse
+							</Text>
+							<Ionicons name='chevron-forward' size={18} color={colors.primary} />
+						</TouchableOpacity>
+					)}
+
+					{/* Estado de mi solicitud */}
+					{!isCreator && !isParticipant && hasPendingRequest && (
+						<View style={localStyles.requestPendingBanner}>
+							<Ionicons name='hourglass-outline' size={18} color={colors.warning} />
+							<Text style={localStyles.pendingResultText}>Tu solicitud está esperando la respuesta del creador.</Text>
+						</View>
+					)}
+
+					{!isCreator && !isParticipant && wasRejected && (
+						<View style={localStyles.requestRejectedBanner}>
+							<Ionicons name='close-circle-outline' size={18} color={colors.error} />
+							<Text style={localStyles.requestRejectedText}>El creador rechazó tu solicitud. Podés volver a pedir entrar.</Text>
+						</View>
+					)}
+
 					{/* Resultado — sólo existe cuando el creador lo cargó */}
 					{result ? (
 						<MatchResultCard result={result} sport={match.sport} teamMode={(match.team_mode as TeamMode) ?? 'none'} />
@@ -329,9 +424,20 @@ export default function MatchDetail() {
 							{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
 						</TouchableOpacity>
 					)
+				) : hasPendingRequest && !hasEnded ? (
+					<TouchableOpacity style={localStyles.cancelButton} onPress={handleCancelRequest} disabled={actionLoading}>
+						{actionLoading ? (
+							<ActivityIndicator color={colors.error} size='small' />
+						) : (
+							<>
+								<Ionicons name='close-circle-outline' size={20} color={colors.error} />
+								<Text style={localStyles.cancelButtonText}>Cancelar mi solicitud</Text>
+							</>
+						)}
+					</TouchableOpacity>
 				) : (
 					<TouchableOpacity style={[styles.mainButton, (!isOpen || isFull || hasEnded) && { backgroundColor: '#555' }]} disabled={!isOpen || isFull || hasEnded || actionLoading} onPress={handleJoinPress}>
-						{actionLoading ? <ActivityIndicator color='white' /> : hasEnded ? <Text style={styles.mainButtonText}>Partido finalizado</Text> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>{hasTeams ? 'Elegir equipo y unirme' : 'Unirme al partido'}</Text>}
+						{actionLoading ? <ActivityIndicator color='white' /> : hasEnded ? <Text style={styles.mainButtonText}>Partido finalizado</Text> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>{hasTeams ? 'Elegir equipo y solicitar' : wasRejected ? 'Volver a solicitar' : 'Solicitar unirme'}</Text>}
 					</TouchableOpacity>
 				)}
 			</View>
@@ -340,10 +446,10 @@ export default function MatchDetail() {
 			<Modal visible={teamPickerVisible} transparent animationType='fade' onRequestClose={() => setTeamPickerVisible(false)}>
 				<TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 32 }} activeOpacity={1} onPress={() => setTeamPickerVisible(false)}>
 					<View style={localStyles.teamPickerSheet}>
-						<Text style={localStyles.teamPickerTitle}>¿A qué equipo te unís?</Text>
-						<Text style={localStyles.teamPickerSub}>Elegí tu equipo para este partido</Text>
+						<Text style={localStyles.teamPickerTitle}>¿A qué equipo querés entrar?</Text>
+						<Text style={localStyles.teamPickerSub}>Si el creador te acepta, entrás en ese equipo</Text>
 
-						<TouchableOpacity style={[localStyles.teamPickerBtn, { backgroundColor: `${colors.info}18`, borderColor: `${colors.info}40` }, teamAFull && localStyles.teamPickerBtnDisabled]} onPress={() => !teamAFull && doJoin('A')} disabled={teamAFull || actionLoading}>
+						<TouchableOpacity style={[localStyles.teamPickerBtn, { backgroundColor: `${colors.info}18`, borderColor: `${colors.info}40` }, teamAFull && localStyles.teamPickerBtnDisabled]} onPress={() => !teamAFull && doRequestJoin('A')} disabled={teamAFull || actionLoading}>
 							<View style={[localStyles.teamPickerDot, { backgroundColor: colors.info }]} />
 							<View style={{ flex: 1 }}>
 								<Text style={[localStyles.teamPickerBtnLabel, { color: colors.info }]}>Equipo A</Text>
@@ -352,7 +458,7 @@ export default function MatchDetail() {
 							{!teamAFull && <Ionicons name='chevron-forward' size={20} color={colors.info} />}
 						</TouchableOpacity>
 
-						<TouchableOpacity style={[localStyles.teamPickerBtn, { backgroundColor: '#f59e0b18', borderColor: '#f59e0b40' }, teamBFull && localStyles.teamPickerBtnDisabled]} onPress={() => !teamBFull && doJoin('B')} disabled={teamBFull || actionLoading}>
+						<TouchableOpacity style={[localStyles.teamPickerBtn, { backgroundColor: '#f59e0b18', borderColor: '#f59e0b40' }, teamBFull && localStyles.teamPickerBtnDisabled]} onPress={() => !teamBFull && doRequestJoin('B')} disabled={teamBFull || actionLoading}>
 							<View style={[localStyles.teamPickerDot, { backgroundColor: '#f59e0b' }]} />
 							<View style={{ flex: 1 }}>
 								<Text style={[localStyles.teamPickerBtnLabel, { color: '#f59e0b' }]}>Equipo B</Text>
@@ -384,6 +490,53 @@ const localStyles = StyleSheet.create({
 		color: colors.error,
 		fontSize: 14,
 		fontWeight: '600',
+		flex: 1,
+	},
+	requestsBanner: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		backgroundColor: `${colors.primary}15`,
+		borderWidth: 1,
+		borderColor: `${colors.primary}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		marginTop: 20,
+	},
+	requestsBannerText: {
+		color: colors.primary,
+		fontSize: 14,
+		fontWeight: '600',
+		flex: 1,
+	},
+	requestPendingBanner: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		backgroundColor: `${colors.warning}15`,
+		borderWidth: 1,
+		borderColor: `${colors.warning}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		marginTop: 20,
+	},
+	requestRejectedBanner: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		backgroundColor: `${colors.error}12`,
+		borderWidth: 1,
+		borderColor: `${colors.error}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		marginTop: 20,
+	},
+	requestRejectedText: {
+		color: colors.error,
+		fontSize: 13,
 		flex: 1,
 	},
 	pendingResultBanner: {

@@ -220,6 +220,12 @@ FROM profiles p
 GRANT SELECT ON public.user_stats TO anon, authenticated;
 GRANT SELECT ON public.user_sport_stats TO anon, authenticated;
 
+-- get_my_stats() (004) contaba lo mismo que la user_stats vieja: partidos por
+-- match_participants y victorias por winner_id. Nadie la llama desde la app, y si
+-- alguien la usara devolvería los números equivocados. Se borra en vez de
+-- mantener dos definiciones de "mis estadísticas".
+DROP FUNCTION IF EXISTS get_my_stats();
+
 
 -- ── 8. profiles.total_matches / total_wins dejan de ser decorativos ────────
 -- Varias pantallas ya los leen (la tarjeta de solicitud muestra "N partidos").
@@ -247,18 +253,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Un solo trigger para INSERT/UPDATE/DELETE: NEW es NULL en el DELETE y OLD en el
--- INSERT, así que se recalculan los perfiles que aparezcan en cualquiera de los dos.
+-- Un solo trigger para INSERT/UPDATE/DELETE. Las ramas son explícitas por TG_OP y
+-- no una condición combinada: en un DELETE no existe NEW y en un INSERT no existe
+-- OLD, y el orden en que se evalúa un AND/OR no está garantizado.
 CREATE OR REPLACE FUNCTION sync_profile_match_totals()
     RETURNS TRIGGER AS
 $$
 BEGIN
-    IF TG_OP <> 'DELETE' THEN
+    IF TG_OP = 'INSERT' THEN
         PERFORM recompute_profile_match_totals(NEW.user_id);
-    END IF;
-
-    IF TG_OP <> 'INSERT' AND (TG_OP = 'DELETE' OR OLD.user_id IS DISTINCT FROM NEW.user_id) THEN
+    ELSIF TG_OP = 'DELETE' THEN
         PERFORM recompute_profile_match_totals(OLD.user_id);
+    ELSE
+        PERFORM recompute_profile_match_totals(NEW.user_id);
+        -- Un UPDATE que cambia de jugador deja dos perfiles para recalcular.
+        IF OLD.user_id IS DISTINCT FROM NEW.user_id THEN
+            PERFORM recompute_profile_match_totals(OLD.user_id);
+        END IF;
     END IF;
 
     RETURN NULL;
@@ -424,12 +435,25 @@ BEGIN
     -- winner_id sigue existiendo y hay selects que lo traen. Sólo tiene sentido
     -- cuando ganó una sola persona (tenis, pádel 1vs1): en un 5vs5 queda NULL y
     -- las victorias se cuentan por match_player_stats.
-    SELECT COUNT(*), MIN(user_id)
-    INTO v_win_count, v_winner
+    --
+    -- Dos consultas y no un COUNT + MIN: Postgres no tiene min(uuid).
+    SELECT COUNT(*)
+    INTO v_win_count
     FROM match_player_stats
     WHERE match_id = p_match_id
       AND outcome = 'win'
       AND user_id IS NOT NULL;
+
+    IF v_win_count = 1 THEN
+        SELECT user_id
+        INTO v_winner
+        FROM match_player_stats
+        WHERE match_id = p_match_id
+          AND outcome = 'win'
+          AND user_id IS NOT NULL;
+    ELSE
+        v_winner := NULL;
+    END IF;
 
     UPDATE matches
     SET status     = 'completed',

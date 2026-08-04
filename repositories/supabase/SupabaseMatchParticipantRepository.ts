@@ -4,7 +4,7 @@ import type { IMatchParticipantRepository } from '../interfaces/IMatchParticipan
 import type { SubscriptionHandle } from '../types'
 
 export class SupabaseMatchParticipantRepository implements IMatchParticipantRepository {
-	async join(matchId: string, userId: string, teamSlot?: TeamSlot): Promise<{ error: Error | null }> {
+	async addParticipant(matchId: string, userId: string, teamSlot?: TeamSlot): Promise<{ error: Error | null }> {
 		const { error } = await supabase.from('match_participants').insert({
 			match_id: matchId,
 			user_id: userId,

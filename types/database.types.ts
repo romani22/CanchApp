@@ -232,6 +232,9 @@ export interface Database {
 					user_id: string
 					status: RequestStatus
 					message: string | null
+					// 022: equipo que pidió el jugador. Al aceptarlo entra con ese equipo,
+					// en vez de quedar sin asignar. null si el partido no usa equipos.
+					team_slot: TeamSlot | null
 					created_at: string
 					updated_at: string
 				}
@@ -241,6 +244,7 @@ export interface Database {
 					user_id: string
 					status?: RequestStatus
 					message?: string | null
+					team_slot?: TeamSlot | null
 					created_at?: string
 					updated_at?: string
 				}
@@ -249,6 +253,7 @@ export interface Database {
 					user_id?: string
 					status?: RequestStatus
 					message?: string | null
+					team_slot?: TeamSlot | null
 					updated_at?: string
 				}
 			}
