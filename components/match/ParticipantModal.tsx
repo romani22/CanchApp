@@ -1,10 +1,13 @@
-import { levelForSport, levelLabels } from '@/constants/matches'
+import { levelForSport, levelLabels, sports } from '@/constants/matches'
+import { buildStatHighlights } from '@/constants/stats'
+import { matchResultsService } from '@/services/matchResults.service'
 import { colors } from '@/theme/colors'
 import { borderRadius, spacing } from '@/theme/spacing'
 import { typography } from '@/theme/typography'
-import { SportLevels, SportType } from '@/types/database.types'
+import { SportLevels, SportStats, SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
-import { Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { ActivityIndicator, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 /**
  * Forma mínima de un participante para este modal. Cubre tanto a los jugadores
@@ -31,6 +34,8 @@ type Props = {
 const avatarColors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4', '#8BC34A']
 const colorFromName = (text?: string | null) => (text ? avatarColors[text.charCodeAt(0) % avatarColors.length] : avatarColors[0])
 
+const sportLabel = (sport: SportType) => sports.find((s) => s.key === sport)?.label ?? sport
+
 /**
  * Ficha de un participante. Estaba duplicada casi textualmente en MatchCard y en
  * ParticipantsMatch — un comentario en esta última incluso decía "igual al de
@@ -42,6 +47,41 @@ export function ParticipantModal({ participant, sport, onClose }: Props) {
 	const rating = participant?.user?.rating
 	// Nivel en el deporte de ESTE partido, no un valor genérico.
 	const level = levelForSport(participant?.user?.sport_levels, sport)
+
+	const [stats, setStats] = useState<SportStats | null>(null)
+	const [loadingStats, setLoadingStats] = useState(false)
+
+	// Las estadísticas se piden al abrir la ficha y no junto con el partido: son
+	// un query por jugador que se mira, en vez de uno por cada jugador de la lista
+	// que quizá nadie toque. Los invitados no tienen perfil, así que no se piden.
+	const userId = participant?.user_id ?? null
+
+	useEffect(() => {
+		if (!userId) {
+			setStats(null)
+			return
+		}
+
+		let active = true
+		setLoadingStats(true)
+		setStats(null)
+
+		matchResultsService
+			.getUserStatsForSport(userId, sport)
+			.then((data) => {
+				if (active) setStats(data)
+			})
+			.catch((err) => console.warn('[ParticipantModal] No se pudieron cargar las estadísticas:', err))
+			.finally(() => {
+				if (active) setLoadingStats(false)
+			})
+
+		return () => {
+			active = false
+		}
+	}, [userId, sport])
+
+	const highlights = buildStatHighlights(stats, sport)
 
 	return (
 		<Modal visible={!!participant} transparent animationType='fade' onRequestClose={onClose}>
@@ -68,6 +108,31 @@ export function ParticipantModal({ participant, sport, onClose }: Props) {
 						<View style={styles.ratingRow}>
 							<Ionicons name='star' size={14} color={colors.warning} />
 							<Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+						</View>
+					)}
+
+					{/* Estadísticas en el deporte del partido */}
+					{!isGuest && (
+						<View style={styles.statsBlock}>
+							{loadingStats ? (
+								<ActivityIndicator color={colors.primary} size='small' />
+							) : highlights.length > 0 ? (
+								<>
+									<View style={styles.statsRow}>
+										{highlights.map((stat) => (
+											<View key={stat.key} style={styles.statItem}>
+												<Text style={styles.statValue}>{stat.value}</Text>
+												<Text style={styles.statLabel}>{stat.label}</Text>
+											</View>
+										))}
+									</View>
+									<Text style={styles.statsFootnote}>
+										{stats?.wins ?? 0} {stats?.wins === 1 ? 'victoria' : 'victorias'} en {sportLabel(sport)}
+									</Text>
+								</>
+							) : (
+								<Text style={styles.statsFootnote}>Sin partidos de {sportLabel(sport)} con resultado cargado</Text>
+							)}
 						</View>
 					)}
 				</View>
@@ -139,5 +204,38 @@ const styles = StyleSheet.create({
 	ratingText: {
 		...typography.bodySmall,
 		color: colors.textSecondaryDark,
+	},
+	statsBlock: {
+		width: '100%',
+		marginTop: spacing.lg,
+		paddingTop: spacing.md,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderDark,
+		alignItems: 'center',
+		gap: spacing.sm,
+	},
+	statsRow: {
+		flexDirection: 'row',
+		justifyContent: 'center',
+		flexWrap: 'wrap',
+		gap: spacing.lg,
+	},
+	statItem: {
+		alignItems: 'center',
+		minWidth: 56,
+	},
+	statValue: {
+		...typography.h4,
+		color: colors.primary,
+	},
+	statLabel: {
+		fontSize: 11,
+		color: colors.textSecondaryDark,
+		textAlign: 'center',
+	},
+	statsFootnote: {
+		...typography.bodySmall,
+		color: colors.textSecondaryDark,
+		textAlign: 'center',
 	},
 })

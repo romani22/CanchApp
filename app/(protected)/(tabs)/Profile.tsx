@@ -176,7 +176,7 @@ export default function ProfileScreen() {
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<HeaderProfile isEditing={isEditing} name={editableName} onChangeName={handleChangeName} />
 
-				{profile && <StatsProfile totalMatches={profile.total_matches} totalWins={profile.total_wins} rating={profile.rating} />}
+				{profile && <StatsProfile userId={profile.id} totalMatches={profile.total_matches} totalWins={profile.total_wins} rating={profile.rating} sportLevels={profile.sport_levels} />}
 
 				{/* Deportes */}
 				<View style={styles.section}>
