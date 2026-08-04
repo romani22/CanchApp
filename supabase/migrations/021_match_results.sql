@@ -415,6 +415,15 @@ BEGIN
             updated_at = NOW()
     RETURNING id INTO v_result_id;
 
+    -- El partido pasa a 'completed' ANTES de escribir las stats, y el orden importa:
+    -- el trigger que recalcula profiles.total_matches / total_wins sólo cuenta
+    -- partidos completed, así que corriendo al revés contaba 0 y los totales del
+    -- perfil quedaban en cero justo después de cargar el resultado.
+    UPDATE matches
+    SET status     = 'completed',
+        updated_at = NOW()
+    WHERE id = p_match_id;
+
     -- Reemplazo completo: corregir un resultado no puede dejar filas viejas de
     -- jugadores que el creador sacó de la lista.
     DELETE FROM match_player_stats WHERE match_id = p_match_id;
@@ -433,31 +442,33 @@ BEGIN
     FROM jsonb_array_elements(p_players) r;
 
     -- winner_id sigue existiendo y hay selects que lo traen. Sólo tiene sentido
-    -- cuando ganó una sola persona (tenis, pádel 1vs1): en un 5vs5 queda NULL y
+    -- cuando ganó UNA sola persona (tenis, pádel 1vs1): en un 5vs5 queda NULL y
     -- las victorias se cuentan por match_player_stats.
+    --
+    -- El COUNT incluye a los invitados a propósito: si ganaron un usuario y un
+    -- invitado, ganó un equipo de dos y winner_id no representa eso. Queda NULL
+    -- también si el único ganador fue un invitado, que no tiene perfil.
     --
     -- Dos consultas y no un COUNT + MIN: Postgres no tiene min(uuid).
     SELECT COUNT(*)
     INTO v_win_count
     FROM match_player_stats
     WHERE match_id = p_match_id
-      AND outcome = 'win'
-      AND user_id IS NOT NULL;
+      AND outcome = 'win';
 
     IF v_win_count = 1 THEN
         SELECT user_id
         INTO v_winner
         FROM match_player_stats
         WHERE match_id = p_match_id
-          AND outcome = 'win'
-          AND user_id IS NOT NULL;
+          AND outcome = 'win';
     ELSE
         v_winner := NULL;
     END IF;
 
+    -- Segundo UPDATE, porque el ganador se conoce recién con las stats escritas.
     UPDATE matches
-    SET status     = 'completed',
-        winner_id  = CASE WHEN v_win_count = 1 THEN v_winner END,
+    SET winner_id  = v_winner,
         updated_at = NOW()
     WHERE id = p_match_id;
 

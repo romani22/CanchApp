@@ -1,4 +1,4 @@
-2-- Migración 009: bucket de Storage para avatares de perfil
+-- Migración 009: bucket de Storage para avatares de perfil
 
 -- Crear el bucket público "avatars"
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

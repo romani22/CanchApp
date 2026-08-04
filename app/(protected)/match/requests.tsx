@@ -1,5 +1,6 @@
 import { TEAM_CONFIG, levelForSport, levelLabels } from '@/constants/matches'
 import { requestsService } from '@/services/requests.service'
+import { colors } from '@/theme/colors'
 import { JoinRequestWithUser } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { format } from 'date-fns'
@@ -102,10 +103,16 @@ export default function MatchRequestsScreen() {
 
 	return (
 		<>
+			{/* headerShown explícito: el Stack de (protected) los oculta a todos, así
+			    que sin esto la pantalla quedaba sin botón de volver. Antes nadie
+			    navegaba acá, ahora el detalle del partido sí. */}
 			<Stack.Screen
 				options={{
-					title: 'Solicitudes Pendientes',
+					headerShown: true,
+					title: 'Solicitudes',
 					headerBackTitle: 'Atrás',
+					headerStyle: { backgroundColor: colors.surfaceDark },
+					headerTintColor: colors.textPrimaryDark,
 				}}
 			/>
 

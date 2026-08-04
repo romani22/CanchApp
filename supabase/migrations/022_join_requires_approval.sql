@@ -163,7 +163,21 @@ CREATE POLICY "Match creators can remove participants"
         );
 
 
--- ── 5. Volver a pedir entrar después de un rechazo ─────────────────────────
+-- ── 5. Una sola notificación por solicitud ─────────────────────────────────
+-- Había DOS triggers avisando al creador del mismo INSERT: on_join_request_created
+-- (005, con notify_match_creator) y trigger_notify_creator_join_request (013).
+-- Cada solicitud generaba dos notificaciones. No se notaba porque hasta ahora
+-- ninguna pantalla llevaba a pedir entrar; con el flujo de aprobación obligatorio
+-- le pasaría a todo el mundo.
+--
+-- Se queda el de 013, que dice quién pidió entrar ("Fulano quiere unirse a X") y
+-- manda user_id/user_name en el payload. El de 005 decía "Alguien quiere unirse a
+-- tu partido" y no servía para armar la tarjeta de la solicitud.
+DROP TRIGGER IF EXISTS on_join_request_created ON join_requests;
+DROP FUNCTION IF EXISTS notify_match_creator();
+
+
+-- ── 6. Volver a pedir entrar después de un rechazo ─────────────────────────
 -- join_requests tiene UNIQUE(match_id, user_id): una segunda solicitud no es una
 -- fila nueva, es la misma volviendo a 'pending'. El trigger de 013 sólo avisaba
 -- al creador en el INSERT, así que ese segundo pedido no le llegaba a nadie.
@@ -217,7 +231,7 @@ CREATE TRIGGER trigger_notify_creator_join_request
 EXECUTE FUNCTION notify_creator_on_join_request();
 
 
--- ── 6. Índice para "¿tengo una solicitud en este partido?" ─────────────────
+-- ── 7. Índice para "¿tengo una solicitud en este partido?" ─────────────────
 -- Lo pregunta el detalle del partido en cada apertura, para saber si mostrar
 -- "Solicitar unirme" o "Solicitud enviada".
 CREATE INDEX IF NOT EXISTS idx_join_requests_match_user ON join_requests (match_id, user_id);
