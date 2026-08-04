@@ -10,6 +10,7 @@ import { SupabaseJoinRequestRepository } from './supabase/SupabaseJoinRequestRep
 import { SupabaseMatchParticipantRepository } from './supabase/SupabaseMatchParticipantRepository'
 import { SupabaseMatchPlayerRepository } from './supabase/SupabaseMatchPlayerRepository'
 import { SupabaseMatchRepository } from './supabase/SupabaseMatchRepository'
+import { SupabaseMatchResultRepository } from './supabase/SupabaseMatchResultRepository'
 import { SupabaseNotificationRepository } from './supabase/SupabaseNotificationRepository'
 import { SupabaseProfileRepository } from './supabase/SupabaseProfileRepository'
 import { SupabasePushTokenRepository } from './supabase/SupabasePushTokenRepository'
@@ -24,6 +25,7 @@ export const repositories = {
 	notifications: new SupabaseNotificationRepository(),
 	matchPlayers: new SupabaseMatchPlayerRepository(),
 	matchParticipants: new SupabaseMatchParticipantRepository(),
+	matchResults: new SupabaseMatchResultRepository(),
 	joinRequests: new SupabaseJoinRequestRepository(),
 	storage: new SupabaseStorageRepository(),
 	pushTokens: new SupabasePushTokenRepository(),

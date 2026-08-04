@@ -17,6 +17,7 @@ export const NotificationItem = ({ item, onPress }: Props) => {
 		request_rejected: 'close-circle-outline',
 		match_cancelled: 'alert-circle-outline',
 		match_reminder: 'alarm-outline',
+		match_result: 'stats-chart-outline',
 		tournament_invitation: 'trophy-outline',
 		new_message: 'chatbubble-ellipses-outline',
 	}

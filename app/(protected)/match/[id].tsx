@@ -1,17 +1,19 @@
 import { styles } from '@/assets/styles/Match.styles'
+import { MatchResultCard } from '@/components/match/MatchResultCard'
 import ParticipantsMatch from '@/components/match/ParticipantsMatch'
 import { TeamView } from '@/components/match/TeamView'
 import Loader from '@/components/ui/Loader'
 import { levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
+import { matchResultsService } from '@/services/matchResults.service'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
-import { MatchWithCreator, TeamSlot } from '@/types/database.types'
+import { MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
 import { getSportImage } from '@/utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
-import { format, parseISO } from 'date-fns'
+import { format, isPast, parseISO } from 'date-fns'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, ImageBackground, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
@@ -22,6 +24,7 @@ export default function MatchDetail() {
 	const { user } = useAuth()
 
 	const [match, setMatch] = useState<MatchWithCreator | null>(null)
+	const [result, setResult] = useState<MatchResultWithPlayers | null>(null)
 	const [loading, setLoading] = useState(true)
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
@@ -31,13 +34,23 @@ export default function MatchDetail() {
 
 	const loadMatch = useCallback(async () => {
 		try {
-			const { data, error } = await matchesService.getById(id as string)
+			const [{ data, error }, resultData] = await Promise.all([
+				matchesService.getById(id as string),
+				// El resultado puede no existir todavía: es null hasta que el creador
+				// lo carga, y un error acá no tiene que tirar abajo el detalle.
+				matchResultsService.getByMatchId(id as string).catch((err) => {
+					console.warn('[MatchDetail] No se pudo cargar el resultado:', err)
+					return null
+				}),
+			])
+
 			if (error) throw error
 			if (!data) {
 				setNotFound(true)
 				return
 			}
 			setMatch(data)
+			setResult(resultData)
 		} catch (err) {
 			console.error('[MatchDetail] Error:', err)
 			setNotFound(true)
@@ -56,8 +69,14 @@ export default function MatchDetail() {
 
 	useEffect(() => {
 		if (!id) return
-		const subscription = matchParticipantsService.subscribe(id as string, () => loadMatch())
-		return () => subscription.unsubscribe()
+		const participants = matchParticipantsService.subscribe(id as string, () => loadMatch())
+		// Para que a los jugadores les aparezca el resultado en cuanto el creador lo
+		// carga, sin salir y volver a entrar a la pantalla.
+		const results = matchResultsService.subscribe(id as string, () => loadMatch())
+		return () => {
+			participants.unsubscribe()
+			results.unsubscribe()
+		}
 	}, [id, loadMatch])
 
 	// ── Join ──────────────────────────────────────────────────────────────
@@ -164,6 +183,9 @@ export default function MatchDetail() {
 	const isParticipant = match.participants?.some((p) => p.user_id === user?.id) ?? false
 	const hasTeams = match.team_mode === 'two_teams'
 	const matchDate = parseISO(match.starts_at)
+	// end_time quedó como TIME desde el schema inicial (006 sólo migró la fecha y la
+	// hora de inicio a starts_at), así que el único corte confiable es starts_at.
+	const hasEnded = isPast(matchDate)
 
 	const perTeam = Math.floor(match.total_players / 2)
 	const teamAFull = (match.participants?.filter((p) => p.team_slot === 'A').length ?? 0) >= perTeam
@@ -243,6 +265,16 @@ export default function MatchDetail() {
 					    venue_name que ya está arriba del título. Se saca hasta que haya
 					    mapa de verdad. */}
 
+					{/* Resultado — sólo existe cuando el creador lo cargó */}
+					{result ? (
+						<MatchResultCard result={result} sport={match.sport} teamMode={(match.team_mode as TeamMode) ?? 'none'} />
+					) : hasEnded && !isCancelled ? (
+						<View style={localStyles.pendingResultBanner}>
+							<Ionicons name='hourglass-outline' size={18} color={colors.warning} />
+							<Text style={localStyles.pendingResultText}>{isCreator ? 'El partido ya se jugó: cargá el resultado para que cuente en las estadísticas.' : 'El creador todavía no cargó el resultado.'}</Text>
+						</View>
+					) : null}
+
 					{match.description ? (
 						<View style={[styles.section, { marginTop: 20 }]}>
 							<Text style={styles.sectionTitle}>Observaciones</Text>
@@ -261,29 +293,45 @@ export default function MatchDetail() {
 					</View>
 				) : isCreator ? (
 					<View style={localStyles.creatorActions}>
-						<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
-							<Text style={styles.mainButtonText}>Editar partido</Text>
-						</TouchableOpacity>
-						{(isOpen || match.status === 'full') && (
-							<TouchableOpacity style={localStyles.cancelButton} onPress={handleCancelMatch} disabled={cancelling}>
-								{cancelling ? (
-									<ActivityIndicator color={colors.error} size='small' />
-								) : (
-									<>
-										<Ionicons name='close-circle-outline' size={20} color={colors.error} />
-										<Text style={localStyles.cancelButtonText}>Cancelar partido</Text>
-									</>
-								)}
+						{/* Un partido que ya se jugó necesita resultado, no edición. */}
+						{hasEnded ? (
+							<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Result', params: { id: id as string } })}>
+								<Text style={styles.mainButtonText}>{result ? 'Editar resultado' : 'Cargar resultado'}</Text>
 							</TouchableOpacity>
+						) : (
+							<>
+								<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Edit_match', params: { id: id as string } })}>
+									<Text style={styles.mainButtonText}>Editar partido</Text>
+								</TouchableOpacity>
+								{(isOpen || match.status === 'full') && (
+									<TouchableOpacity style={localStyles.cancelButton} onPress={handleCancelMatch} disabled={cancelling}>
+										{cancelling ? (
+											<ActivityIndicator color={colors.error} size='small' />
+										) : (
+											<>
+												<Ionicons name='close-circle-outline' size={20} color={colors.error} />
+												<Text style={localStyles.cancelButtonText}>Cancelar partido</Text>
+											</>
+										)}
+									</TouchableOpacity>
+								)}
+							</>
 						)}
 					</View>
 				) : isParticipant ? (
-					<TouchableOpacity style={[styles.mainButton, { backgroundColor: colors.error }]} onPress={handleLeave} disabled={actionLoading}>
-						{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
-					</TouchableOpacity>
+					hasEnded ? (
+						<View style={localStyles.cancelledFooter}>
+							<Ionicons name='checkmark-done-outline' size={20} color={colors.textSecondaryDark} />
+							<Text style={localStyles.cancelledFooterText}>Partido jugado</Text>
+						</View>
+					) : (
+						<TouchableOpacity style={[styles.mainButton, { backgroundColor: colors.error }]} onPress={handleLeave} disabled={actionLoading}>
+							{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
+						</TouchableOpacity>
+					)
 				) : (
-					<TouchableOpacity style={[styles.mainButton, (!isOpen || isFull) && { backgroundColor: '#555' }]} disabled={!isOpen || isFull || actionLoading} onPress={handleJoinPress}>
-						{actionLoading ? <ActivityIndicator color='white' /> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>{hasTeams ? 'Elegir equipo y unirme' : 'Unirme al partido'}</Text>}
+					<TouchableOpacity style={[styles.mainButton, (!isOpen || isFull || hasEnded) && { backgroundColor: '#555' }]} disabled={!isOpen || isFull || hasEnded || actionLoading} onPress={handleJoinPress}>
+						{actionLoading ? <ActivityIndicator color='white' /> : hasEnded ? <Text style={styles.mainButtonText}>Partido finalizado</Text> : isFull ? <Text style={styles.mainButtonText}>Partido completo</Text> : <Text style={styles.mainButtonText}>{hasTeams ? 'Elegir equipo y unirme' : 'Unirme al partido'}</Text>}
 					</TouchableOpacity>
 				)}
 			</View>
@@ -336,6 +384,23 @@ const localStyles = StyleSheet.create({
 		color: colors.error,
 		fontSize: 14,
 		fontWeight: '600',
+		flex: 1,
+	},
+	pendingResultBanner: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		backgroundColor: `${colors.warning}15`,
+		borderWidth: 1,
+		borderColor: `${colors.warning}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		marginTop: 20,
+	},
+	pendingResultText: {
+		color: colors.warning,
+		fontSize: 13,
 		flex: 1,
 	},
 	cancelledFooter: {
