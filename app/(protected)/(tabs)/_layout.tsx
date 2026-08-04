@@ -50,7 +50,7 @@ export default function TabsLayout() {
 			<Tabs.Screen
 				name='My-Matches'
 				options={{
-					title: 'Mis Turnos',
+					title: 'Mis turnos',
 					tabBarIcon: ({ focused, color, size }) => (
 						<View style={focused ? styles.selectTab : null}>
 							<MaterialIcons name='calendar-today' size={size} color={focused ? '#fff' : color} />

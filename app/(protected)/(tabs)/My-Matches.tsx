@@ -108,7 +108,7 @@ export default function MyMatchesScreen() {
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>
 			<View style={styles.header}>
-				<Text style={styles.headerTitle}>Mis Turnos</Text>
+				<Text style={styles.headerTitle}>Mis turnos</Text>
 			</View>
 
 			<View style={styles.tabsContainer}>
