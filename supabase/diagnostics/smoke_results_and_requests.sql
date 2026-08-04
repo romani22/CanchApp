@@ -1,5 +1,6 @@
 -- =====================================================
--- Smoke test: resultados de partido (021) y aprobación para unirse (022)
+-- Smoke test: resultados (021), aprobación para unirse (022)
+--             y confirmación del resultado (023)
 -- =====================================================
 --
 -- Cómo correrlo contra la base local:
@@ -327,6 +328,214 @@ $$
             RAISE EXCEPTION 'FALLO: no se notificó el rechazo';
         END IF;
         RAISE NOTICE 'OK 10 — rechazo por RPC y notificación al jugador';
+    END
+$$;
+
+-- ── 11. Ventana del creador: 24 h ──────────────────────────────────────────
+-- Otro partido, recién jugado, para probar quién puede cargar el resultado.
+INSERT INTO matches (id, creator_id, sport, title, starts_at, venue_name, total_players, players_needed)
+VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111',
+        'tenis', 'Tenis de prueba', NOW() - INTERVAL '2 hours', 'Club Test', 2, 2);
+
+INSERT INTO match_participants (match_id, user_id, is_creator)
+VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111', true),
+       ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '22222222-2222-2222-2222-222222222222', false);
+
+DO
+$$
+    DECLARE
+        v_players JSONB := '[
+          {"user_id":"22222222-2222-2222-2222-222222222222","display_name":"Jugador","outcome":"win"},
+          {"user_id":"11111111-1111-1111-1111-111111111111","display_name":"Creador","outcome":"loss"}
+        ]'::JSONB;
+    BEGIN
+        -- Antes de las 24 h, un jugador que no es el creador todavía no puede.
+        PERFORM set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222"}', true);
+        BEGIN
+            PERFORM save_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, 0, '[]'::JSONB, NULL, v_players);
+            RAISE EXCEPTION 'FALLO: un jugador cargó el resultado antes de que venciera la ventana del creador';
+        EXCEPTION
+            WHEN sqlstate 'P0001' THEN
+                IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+                RAISE NOTICE 'OK 11a — rechazado: %', SQLERRM;
+        END;
+
+        -- Se envejece el partido para que la ventana quede vencida.
+        UPDATE matches SET starts_at = NOW() - INTERVAL '25 hours'
+        WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+        PERFORM save_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, 0,
+                                  '[{"a":6,"b":4},{"a":6,"b":3}]'::JSONB, NULL, v_players);
+
+        IF (SELECT reported_by FROM match_results WHERE match_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+            <> '22222222-2222-2222-2222-222222222222' THEN
+            RAISE EXCEPTION 'FALLO: reported_by no quedó en quien cargó el resultado';
+        END IF;
+        -- Ganó una sola persona: acá winner_id sí tiene sentido.
+        IF (SELECT winner_id FROM matches WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+            <> '22222222-2222-2222-2222-222222222222' THEN
+            RAISE EXCEPTION 'FALLO: winner_id debería ser el único ganador';
+        END IF;
+
+        RAISE NOTICE 'OK 11 — pasadas 24 h lo carga un jugador y queda como autor';
+    END
+$$;
+
+-- ── 12. Un tercero no pisa el resultado de otro ────────────────────────────
+DO
+$$
+    BEGIN
+        PERFORM set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333"}', true);
+        INSERT INTO match_participants (match_id, user_id)
+        VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333');
+
+        BEGIN
+            PERFORM save_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 9, 9, '[]'::JSONB, NULL,
+                                      '[{"user_id":"33333333-3333-3333-3333-333333333333","display_name":"Tercero","outcome":"win"},
+                                        {"user_id":"11111111-1111-1111-1111-111111111111","display_name":"Creador","outcome":"loss"}]'::JSONB);
+            RAISE EXCEPTION 'FALLO: un tercero sobreescribió el resultado que cargó otro';
+        EXCEPTION
+            WHEN sqlstate 'P0001' THEN
+                IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+                RAISE NOTICE 'OK 12 — rechazado: %', SQLERRM;
+        END;
+    END
+$$;
+
+-- ── 13. Sin objeciones el resultado vale ───────────────────────────────────
+DO
+$$
+    DECLARE
+        v_played INTEGER;
+    BEGIN
+        -- Nadie confirmó nada todavía y las estadísticas ya cuentan: es la decisión
+        -- de diseño central, no hay quórum que esperar.
+        SELECT matches_played INTO v_played
+        FROM user_sport_stats
+        WHERE user_id = '22222222-2222-2222-2222-222222222222' AND sport = 'tenis';
+
+        IF COALESCE(v_played, 0) <> 1 THEN
+            RAISE EXCEPTION 'FALLO: el resultado sin confirmar no cuenta (jugados=%)', COALESCE(v_played, 0);
+        END IF;
+        RAISE NOTICE 'OK 13 — sin objeciones cuenta, sin necesidad de confirmaciones';
+    END
+$$;
+
+-- ── 14. Confirmar y objetar ────────────────────────────────────────────────
+DO
+$$
+    DECLARE
+        v_played  INTEGER;
+        v_totals  INTEGER;
+        v_dispute BOOLEAN;
+        v_notif   INTEGER;
+    BEGIN
+        -- El autor no vota su propio resultado.
+        PERFORM set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222"}', true);
+        BEGIN
+            PERFORM vote_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'confirm');
+            RAISE EXCEPTION 'FALLO: el autor pudo votar su propio resultado';
+        EXCEPTION
+            WHEN sqlstate 'P0001' THEN
+                IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+                RAISE NOTICE 'OK 14a — rechazado: %', SQLERRM;
+        END;
+
+        -- El creador confirma: no cambia nada de las estadísticas, es señal social.
+        PERFORM set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111"}', true);
+        PERFORM vote_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'confirm');
+
+        SELECT has_dispute INTO v_dispute FROM match_results WHERE match_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+        IF v_dispute THEN RAISE EXCEPTION 'FALLO: una confirmación marcó el resultado como objetado'; END IF;
+
+        -- Y ahora objeta: el resultado sale de las estadísticas de todos.
+        PERFORM vote_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'dispute', 'el segundo set no fue así');
+
+        SELECT has_dispute INTO v_dispute FROM match_results WHERE match_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+        IF NOT v_dispute THEN RAISE EXCEPTION 'FALLO: la objeción no marcó el resultado'; END IF;
+
+        -- Cambiar el voto actualiza el mismo, no suma otro.
+        IF (SELECT COUNT(*) FROM match_result_confirmations c
+                JOIN match_results r ON r.id = c.result_id
+            WHERE r.match_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') <> 1 THEN
+            RAISE EXCEPTION 'FALLO: cambiar el voto dejó dos votos del mismo jugador';
+        END IF;
+
+        SELECT matches_played INTO v_played
+        FROM user_sport_stats
+        WHERE user_id = '22222222-2222-2222-2222-222222222222' AND sport = 'tenis';
+        IF COALESCE(v_played, 0) <> 0 THEN
+            RAISE EXCEPTION 'FALLO: un resultado objetado sigue contando (jugados=%)', v_played;
+        END IF;
+
+        SELECT total_matches INTO v_totals FROM profiles WHERE id = '22222222-2222-2222-2222-222222222222';
+        IF v_totals <> 0 THEN
+            RAISE EXCEPTION 'FALLO: los totales del perfil no descontaron el resultado objetado (%)', v_totals;
+        END IF;
+
+        -- Al autor le tiene que llegar el aviso de la objeción.
+        SELECT COUNT(*) INTO v_notif FROM notifications
+        WHERE user_id = '22222222-2222-2222-2222-222222222222'
+          AND title LIKE 'Objetaron%';
+        IF v_notif <> 1 THEN RAISE EXCEPTION 'FALLO: el autor recibió % avisos de objeción', v_notif; END IF;
+
+        RAISE NOTICE 'OK 14 — la objeción saca el resultado de las estadísticas y avisa al autor';
+    END
+$$;
+
+-- ── 15. Corregir el resultado limpia los votos ─────────────────────────────
+DO
+$$
+    DECLARE
+        v_votes   INTEGER;
+        v_dispute BOOLEAN;
+        v_played  INTEGER;
+    BEGIN
+        -- Lo corrige el autor. Confirmar "6-4 6-3" no es confirmar la corrección, así
+        -- que los votos de la versión anterior se van.
+        PERFORM set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222"}', true);
+        PERFORM save_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, 1,
+                                  '[{"a":6,"b":4},{"a":3,"b":6},{"a":7,"b":5}]'::JSONB, NULL,
+                                  '[{"user_id":"22222222-2222-2222-2222-222222222222","display_name":"Jugador","outcome":"win"},
+                                    {"user_id":"11111111-1111-1111-1111-111111111111","display_name":"Creador","outcome":"loss"}]'::JSONB);
+
+        SELECT COUNT(*) INTO v_votes
+        FROM match_result_confirmations c
+                 JOIN match_results r ON r.id = c.result_id
+        WHERE r.match_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+        IF v_votes <> 0 THEN RAISE EXCEPTION 'FALLO: quedaron % votos de la versión vieja', v_votes; END IF;
+
+        SELECT has_dispute INTO v_dispute FROM match_results WHERE match_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+        IF v_dispute THEN RAISE EXCEPTION 'FALLO: el resultado corregido sigue marcado como objetado'; END IF;
+
+        SELECT matches_played INTO v_played
+        FROM user_sport_stats
+        WHERE user_id = '22222222-2222-2222-2222-222222222222' AND sport = 'tenis';
+        IF COALESCE(v_played, 0) <> 1 THEN
+            RAISE EXCEPTION 'FALLO: el resultado corregido no volvió a contar (jugados=%)', COALESCE(v_played, 0);
+        END IF;
+
+        RAISE NOTICE 'OK 15 — corregir borra los votos y el resultado vuelve a contar';
+    END
+$$;
+
+-- ── 16. Sólo los jugadores del partido votan ───────────────────────────────
+DO
+$$
+    BEGIN
+        -- Se saca al tercero del partido y ahí ya no puede votar.
+        DELETE FROM match_participants
+        WHERE match_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND user_id = '33333333-3333-3333-3333-333333333333';
+
+        PERFORM set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333"}', true);
+        BEGIN
+            PERFORM vote_match_result('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'dispute');
+            RAISE EXCEPTION 'FALLO: alguien que no jugó el partido pudo objetar el resultado';
+        EXCEPTION
+            WHEN sqlstate 'P0001' THEN
+                IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+                RAISE NOTICE 'OK 16 — rechazado: %', SQLERRM;
+        END;
     END
 $$;
 

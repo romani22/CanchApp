@@ -1,16 +1,24 @@
-import type { MatchResultInput, MatchResultWithPlayers, SportStats, SportType } from '@/types/database.types'
+import type { MatchResultInput, MatchResultVote, MatchResultWithPlayers, SportStats, SportType } from '@/types/database.types'
 import type { SubscriptionHandle } from '../types'
 
 export interface IMatchResultRepository {
-	/** Resultado de un partido, o null si todavía no se cargó. */
+	/** Resultado de un partido con sus votos, o null si todavía no se cargó. */
 	getByMatchId(matchId: string): Promise<MatchResultWithPlayers | null>
 	/**
-	 * Carga o corrige el resultado. Valida del lado del servidor que quien llama
-	 * sea el creador y que los jugadores hayan participado del partido.
+	 * Carga o corrige el resultado. El servidor valida quién puede: el creador
+	 * siempre, el autor puede corregir el suyo, y cualquier jugador puede cargarlo
+	 * si a las 24 h del partido nadie lo hizo.
 	 */
 	save(matchId: string, input: MatchResultInput): Promise<string>
 	/** Borra el resultado y devuelve el partido a open/full. */
 	remove(matchId: string): Promise<void>
+	/**
+	 * Confirma u objeta el resultado. Sin objeciones el resultado vale; una objeción
+	 * lo saca de las estadísticas hasta que su autor lo corrija.
+	 */
+	vote(matchId: string, vote: MatchResultVote, comment?: string): Promise<void>
+	/** Retira el voto propio. */
+	clearVote(matchId: string): Promise<void>
 	/**
 	 * De una lista de partidos, cuáles ya tienen resultado cargado. Una consulta
 	 * para toda la lista: es para marcar en Mis Turnos los que le faltan resultado

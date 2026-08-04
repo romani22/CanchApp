@@ -11,6 +11,7 @@ import { borderRadius, spacing } from '@/theme/spacing'
 import { typography } from '@/theme/typography'
 import { MatchOutcome, MatchPlayerStatInput, MatchSetScore, MatchWithCreator, SportType, TeamSlot } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
+import { addHours, isAfter, parseISO } from 'date-fns'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
@@ -79,21 +80,30 @@ export default function MatchResultScreen() {
 				return
 			}
 
-			if (data.creator_id !== user?.id) {
-				Alert.alert('Sin permiso', 'Sólo el creador puede cargar el resultado del partido.')
-				router.back()
-				return
-			}
-
 			if (data.status === 'cancelled') {
 				Alert.alert('Partido cancelado', 'Un partido cancelado no puede tener resultado.')
 				router.back()
 				return
 			}
 
-			setMatch(data)
-
 			const existing = await matchResultsService.getByMatchId(id as string)
+
+			// Mismas reglas que valida la RPC (023): el creador siempre; el autor puede
+			// corregir el suyo; cualquier jugador puede cargarlo si a las 24 horas del
+			// partido nadie lo hizo. El chequeo de acá es sólo para no mostrar un
+			// formulario que el servidor va a rechazar.
+			const isCreator = data.creator_id === user?.id
+			const isAuthor = !!existing && existing.reported_by === user?.id
+			const isPlayer = data.participants?.some((p) => p.user_id === user?.id) ?? false
+			const windowOpen = isAfter(new Date(), addHours(parseISO(data.starts_at), 24))
+
+			if (!isCreator && !isAuthor && !(isPlayer && !existing && windowOpen)) {
+				Alert.alert('Sin permiso', existing ? 'El resultado lo cargó otra persona. Si no coincide, podés objetarlo desde el partido.' : 'Por ahora sólo el creador puede cargar el resultado. A las 24 horas del partido lo puede cargar cualquier jugador.')
+				router.back()
+				return
+			}
+
+			setMatch(data)
 			setIsEditingExisting(!!existing)
 
 			// El resultado guardado se busca por user_id, y por nombre en los invitados:

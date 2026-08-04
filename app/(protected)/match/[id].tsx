@@ -11,10 +11,10 @@ import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { requestsService } from '@/services/requests.service'
 import { colors } from '@/theme/colors'
-import { JoinRequest, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
+import { JoinRequest, MatchResultVote, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
 import { getSportImage } from '@/utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
-import { format, isPast, parseISO } from 'date-fns'
+import { addHours, format, isAfter, isPast, parseISO } from 'date-fns'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, ImageBackground, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
@@ -34,6 +34,7 @@ export default function MatchDetail() {
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
 	const [cancelling, setCancelling] = useState(false)
+	const [voting, setVoting] = useState(false)
 	// Modal para elegir equipo al unirse
 	const [teamPickerVisible, setTeamPickerVisible] = useState(false)
 
@@ -194,6 +195,47 @@ export default function MatchDetail() {
 		}
 	}
 
+	// ── Votar el resultado ────────────────────────────────────────────────
+	// El que lo cargó no vota (si está mal, lo corrige). Los demás confirman u
+	// objetan: sin objeciones el resultado vale igual, así que confirmar es sólo
+	// señal social y objetar es lo que lo saca de las estadísticas.
+	const handleVote = async (vote: MatchResultVote) => {
+		if (vote === 'dispute') {
+			Alert.alert('Objetar el resultado', 'El resultado deja de contar para las estadísticas hasta que quien lo cargó lo corrija. ¿Seguro?', [
+				{ text: 'Volver', style: 'cancel' },
+				{ text: 'Objetar', style: 'destructive', onPress: () => submitVote('dispute') },
+			])
+			return
+		}
+		await submitVote(vote)
+	}
+
+	const submitVote = async (vote: MatchResultVote) => {
+		try {
+			setVoting(true)
+			await matchResultsService.vote(id as string, vote)
+			await loadMatch()
+		} catch (err) {
+			console.error('[MatchDetail] Error votando el resultado:', err)
+			Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo registrar tu voto.')
+		} finally {
+			setVoting(false)
+		}
+	}
+
+	const handleClearVote = async () => {
+		try {
+			setVoting(true)
+			await matchResultsService.clearVote(id as string)
+			await loadMatch()
+		} catch (err) {
+			console.error('[MatchDetail] Error retirando el voto:', err)
+			Alert.alert('Error', 'No se pudo retirar tu voto.')
+		} finally {
+			setVoting(false)
+		}
+	}
+
 	const handleCancelRequest = async () => {
 		if (!myRequest) return
 		try {
@@ -286,6 +328,16 @@ export default function MatchDetail() {
 	// end_time quedó como TIME desde el schema inicial (006 sólo migró la fecha y la
 	// hora de inicio a starts_at), así que el único corte confiable es starts_at.
 	const hasEnded = isPast(matchDate)
+
+	// Pasadas 24 horas del partido, si el creador no cargó el resultado lo puede
+	// cargar cualquier jugador (la RPC valida lo mismo del lado del servidor).
+	const openResultWindow = isAfter(new Date(), addHours(matchDate, 24))
+	const canLoadResult = !isCancelled && hasEnded && (isCreator || result?.reported_by === user?.id || (!result && isParticipant && openResultWindow))
+	// Vota quien jugó el partido y no cargó el resultado: si lo cargó él y está mal,
+	// lo corrige, no se objeta a sí mismo.
+	const canVoteResult = !!result && isParticipant && result.reported_by !== user?.id
+	const registeredPlayers = match.participants?.filter((p) => p.user_id).length ?? 0
+	const voterCount = Math.max(0, registeredPlayers - (result?.reported_by ? 1 : 0))
 
 	const perTeam = Math.floor(match.total_players / 2)
 	const teamAFull = (match.participants?.filter((p) => p.team_slot === 'A').length ?? 0) >= perTeam
@@ -393,11 +445,11 @@ export default function MatchDetail() {
 
 					{/* Resultado — sólo existe cuando el creador lo cargó */}
 					{result ? (
-						<MatchResultCard result={result} sport={match.sport} teamMode={(match.team_mode as TeamMode) ?? 'none'} />
+						<MatchResultCard result={result} sport={match.sport} teamMode={(match.team_mode as TeamMode) ?? 'none'} currentUserId={user?.id} voterCount={voterCount} canVote={canVoteResult} onVote={handleVote} onClearVote={handleClearVote} voting={voting} />
 					) : hasEnded && !isCancelled ? (
 						<View style={localStyles.pendingResultBanner}>
 							<Ionicons name='hourglass-outline' size={18} color={colors.warning} />
-							<Text style={localStyles.pendingResultText}>{isCreator ? 'El partido ya se jugó: cargá el resultado para que cuente en las estadísticas.' : 'El creador todavía no cargó el resultado.'}</Text>
+							<Text style={localStyles.pendingResultText}>{isCreator ? 'El partido ya se jugó: cargá el resultado para que cuente en las estadísticas.' : openResultWindow && isParticipant ? 'El creador no cargó el resultado: ya lo podés cargar vos.' : 'El creador todavía no cargó el resultado.'}</Text>
 						</View>
 					) : null}
 
@@ -446,10 +498,18 @@ export default function MatchDetail() {
 					</View>
 				) : isParticipant ? (
 					hasEnded ? (
-						<View style={localStyles.cancelledFooter}>
-							<Ionicons name='checkmark-done-outline' size={20} color={colors.textSecondaryDark} />
-							<Text style={localStyles.cancelledFooterText}>Partido jugado</Text>
-						</View>
+						// Un jugador puede cargar el resultado si pasó la ventana del creador,
+						// o corregir el que él mismo cargó.
+						canLoadResult ? (
+							<TouchableOpacity style={styles.mainButton} onPress={() => router.push({ pathname: '/match/Result', params: { id: id as string } })}>
+								<Text style={styles.mainButtonText}>{result ? 'Editar resultado' : 'Cargar resultado'}</Text>
+							</TouchableOpacity>
+						) : (
+							<View style={localStyles.cancelledFooter}>
+								<Ionicons name='checkmark-done-outline' size={20} color={colors.textSecondaryDark} />
+								<Text style={localStyles.cancelledFooterText}>Partido jugado</Text>
+							</View>
+						)
 					) : (
 						<TouchableOpacity style={[styles.mainButton, { backgroundColor: colors.error }]} onPress={handleLeave} disabled={actionLoading}>
 							{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}

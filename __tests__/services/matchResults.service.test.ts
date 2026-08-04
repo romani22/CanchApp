@@ -42,8 +42,20 @@ const result = {
 	sets: [],
 	notes: null,
 	reported_by: 'creator-1',
+	has_dispute: false,
 	created_at: '2026-04-20T22:00:00Z',
 	updated_at: '2026-04-20T22:00:00Z',
+}
+
+const confirmation = {
+	id: 'vote-1',
+	result_id: 'result-1',
+	user_id: 'user-2',
+	vote: 'confirm' as const,
+	comment: null,
+	created_at: '2026-04-20T23:00:00Z',
+	updated_at: '2026-04-20T23:00:00Z',
+	user: { id: 'user-2', full_name: 'Jugador' },
 }
 
 const playerStat = {
@@ -65,12 +77,20 @@ beforeEach(() => {
 })
 
 describe('getByMatchId()', () => {
-	it('junta el resultado con las stats por jugador', async () => {
-		mockFrom.mockImplementation((table: string) => (table === 'match_results' ? makeBuilder({ data: result }) : makeBuilder({ data: [playerStat] })))
+	const setupFrom = ({ resultRow = result as unknown, players = [playerStat] as unknown, votes = [confirmation] as unknown } = {}) => {
+		mockFrom.mockImplementation((table: string) => {
+			if (table === 'match_results') return makeBuilder({ data: resultRow })
+			if (table === 'match_player_stats') return makeBuilder({ data: players })
+			return makeBuilder({ data: votes })
+		})
+	}
+
+	it('junta el resultado con las stats por jugador y los votos', async () => {
+		setupFrom()
 
 		const data = await matchResultsService.getByMatchId('match-1')
 
-		expect(data).toEqual({ ...result, players: [playerStat] })
+		expect(data).toEqual({ ...result, players: [playerStat], confirmations: [confirmation] })
 	})
 
 	// null = "todavía no se cargó", que es el estado normal de un partido nuevo.
@@ -78,6 +98,25 @@ describe('getByMatchId()', () => {
 		mockFrom.mockImplementation(() => makeBuilder({ data: null }))
 
 		expect(await matchResultsService.getByMatchId('match-1')).toBeNull()
+	})
+
+	// Los votos cuelgan del id del resultado, no del partido: sin resultado no hay
+	// nada que preguntar.
+	it('no consulta los votos si no hay resultado', async () => {
+		mockFrom.mockImplementation(() => makeBuilder({ data: null }))
+
+		await matchResultsService.getByMatchId('match-1')
+
+		expect(mockFrom).not.toHaveBeenCalledWith('match_result_confirmations')
+	})
+
+	it('devuelve listas vacías cuando no hay stats ni votos', async () => {
+		setupFrom({ players: null, votes: null })
+
+		const data = await matchResultsService.getByMatchId('match-1')
+
+		expect(data?.players).toEqual([])
+		expect(data?.confirmations).toEqual([])
 	})
 
 	it('propaga el error de la consulta', async () => {
@@ -145,6 +184,40 @@ describe('remove()', () => {
 		await matchResultsService.remove('match-1')
 
 		expect(mockRpc).toHaveBeenCalledWith('delete_match_result', { p_match_id: 'match-1' })
+	})
+})
+
+describe('vote() / clearVote()', () => {
+	it('confirma el resultado', async () => {
+		mockRpc.mockResolvedValue({ data: null, error: null })
+
+		await matchResultsService.vote('match-1', 'confirm')
+
+		expect(mockRpc).toHaveBeenCalledWith('vote_match_result', { p_match_id: 'match-1', p_vote: 'confirm', p_comment: null })
+	})
+
+	it('objeta con comentario', async () => {
+		mockRpc.mockResolvedValue({ data: null, error: null })
+
+		await matchResultsService.vote('match-1', 'dispute', 'el segundo gol no fue')
+
+		expect(mockRpc).toHaveBeenCalledWith('vote_match_result', { p_match_id: 'match-1', p_vote: 'dispute', p_comment: 'el segundo gol no fue' })
+	})
+
+	// El que cargó el resultado no vota: si está mal, lo corrige. Lo valida el
+	// servidor, así que acá sólo importa que el mensaje llegue al usuario.
+	it('propaga el rechazo del servidor', async () => {
+		mockRpc.mockResolvedValue({ data: null, error: new Error('Cargaste vos el resultado: si está mal, corregilo') })
+
+		await expect(matchResultsService.vote('match-1', 'dispute')).rejects.toThrow('Cargaste vos el resultado')
+	})
+
+	it('retira el voto', async () => {
+		mockRpc.mockResolvedValue({ data: null, error: null })
+
+		await matchResultsService.clearVote('match-1')
+
+		expect(mockRpc).toHaveBeenCalledWith('clear_match_result_vote', { p_match_id: 'match-1' })
 	})
 })
 

@@ -1,12 +1,12 @@
 import { supabase } from '@/lib/supabase'
-import type { MatchPlayerStat, MatchResult, MatchResultInput, MatchResultWithPlayers, SportStats, SportType } from '@/types/database.types'
+import type { MatchPlayerStat, MatchResult, MatchResultInput, MatchResultVote, MatchResultWithPlayers, SportStats, SportType } from '@/types/database.types'
 import type { IMatchResultRepository } from '../interfaces/IMatchResultRepository'
 import type { SubscriptionHandle } from '../types'
 
 export class SupabaseMatchResultRepository implements IMatchResultRepository {
 	async getByMatchId(matchId: string): Promise<MatchResultWithPlayers | null> {
-		// Dos queries en paralelo en vez de un embedded select: las stats por jugador
-		// se leen también solas (para el modal de participante), y así el shape que
+		// Queries separadas en vez de un embedded select: las stats por jugador se
+		// leen también solas (para el modal de participante), y así el shape que
 		// devuelve cada una no depende de cómo PostgREST resuelva la relación.
 		const [{ data: result, error: resultError }, { data: players, error: playersError }] = await Promise.all([
 			supabase.from('match_results').select('*').eq('match_id', matchId).maybeSingle(),
@@ -17,7 +17,34 @@ export class SupabaseMatchResultRepository implements IMatchResultRepository {
 		if (playersError) throw playersError
 		if (!result) return null
 
-		return { ...(result as MatchResult), players: (players ?? []) as MatchPlayerStat[] }
+		// Los votos cuelgan del resultado, no del partido, así que necesitan su id:
+		// van en un segundo viaje y no en paralelo con los de arriba.
+		const { data: confirmations, error: confirmationsError } = await supabase
+			.from('match_result_confirmations')
+			.select('*, user:profiles(id, full_name)')
+			.eq('result_id', (result as MatchResult).id)
+
+		if (confirmationsError) throw confirmationsError
+
+		return {
+			...(result as MatchResult),
+			players: (players ?? []) as MatchPlayerStat[],
+			confirmations: (confirmations ?? []) as MatchResultWithPlayers['confirmations'],
+		}
+	}
+
+	async vote(matchId: string, vote: MatchResultVote, comment?: string): Promise<void> {
+		const { error } = await supabase.rpc('vote_match_result', {
+			p_match_id: matchId,
+			p_vote: vote,
+			p_comment: comment ?? null,
+		})
+		if (error) throw error
+	}
+
+	async clearVote(matchId: string): Promise<void> {
+		const { error } = await supabase.rpc('clear_match_result_vote', { p_match_id: matchId })
+		if (error) throw error
 	}
 
 	async save(matchId: string, input: MatchResultInput): Promise<string> {

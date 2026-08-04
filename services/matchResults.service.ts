@@ -1,6 +1,6 @@
 import { repositories } from '@/repositories'
 import type { SubscriptionHandle } from '@/repositories/types'
-import type { MatchResultInput, MatchResultWithPlayers, SportStats, SportType } from '@/types/database.types'
+import type { MatchResultInput, MatchResultVote, MatchResultWithPlayers, SportStats, SportType } from '@/types/database.types'
 
 export const matchResultsService = {
 	async getByMatchId(matchId: string): Promise<MatchResultWithPlayers | null> {
@@ -13,6 +13,14 @@ export const matchResultsService = {
 
 	async remove(matchId: string): Promise<void> {
 		return repositories.matchResults.remove(matchId)
+	},
+
+	async vote(matchId: string, vote: MatchResultVote, comment?: string): Promise<void> {
+		return repositories.matchResults.vote(matchId, vote, comment)
+	},
+
+	async clearVote(matchId: string): Promise<void> {
+		return repositories.matchResults.clearVote(matchId)
 	},
 
 	async getMatchIdsWithResult(matchIds: string[]): Promise<Set<string>> {

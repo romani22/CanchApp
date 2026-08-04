@@ -15,6 +15,12 @@ export type RequestStatus = 'pending' | 'accepted' | 'rejected'
 export type NotificationType = 'new_match' | 'join_request' | 'request_accepted' | 'request_rejected' | 'match_reminder' | 'match_cancelled' | 'player_joined' | 'match_result'
 /** Resultado de un jugador en un partido (021_match_results.sql). */
 export type MatchOutcome = 'win' | 'loss' | 'draw'
+/**
+ * Voto de un jugador sobre el resultado cargado (023_result_confirmations.sql).
+ * Sin objeciones el resultado vale: 'confirm' es señal social, 'dispute' es lo que
+ * saca al partido de las estadísticas hasta que su autor lo corrija.
+ */
+export type MatchResultVote = 'confirm' | 'dispute'
 /** Un set, con la misma orientación que score_a / score_b del resultado. */
 export type MatchSetScore = { a: number; b: number }
 export type DevicePlatform = 'ios' | 'android' | 'web'
@@ -355,7 +361,12 @@ export interface Database {
 					score_b: number | null
 					sets: MatchSetScore[]
 					notes: string | null
+					// Quién cargó la versión vigente: es quien puede corregirla (además del
+					// creador) y quien recibe el aviso si alguien la objeta.
 					reported_by: string | null
+					// 023: algún jugador objetó. Un resultado objetado no cuenta para las
+					// estadísticas hasta que se corrija.
+					has_dispute: boolean
 					created_at: string
 					updated_at: string
 				}
@@ -375,6 +386,34 @@ export interface Database {
 					score_b?: number | null
 					sets?: MatchSetScore[]
 					notes?: string | null
+					updated_at?: string
+				}
+			}
+			// 023_result_confirmations.sql. Un voto por jugador sobre el resultado
+			// cargado. Se borran al corregirlo: confirmar "3-2" no es confirmar "2-2".
+			match_result_confirmations: {
+				Row: {
+					id: string
+					result_id: string
+					user_id: string
+					vote: MatchResultVote
+					/** Sólo tiene sentido en una objeción: qué dice que estuvo mal. */
+					comment: string | null
+					created_at: string
+					updated_at: string
+				}
+				Insert: {
+					id?: string
+					result_id: string
+					user_id: string
+					vote: MatchResultVote
+					comment?: string | null
+					created_at?: string
+					updated_at?: string
+				}
+				Update: {
+					vote?: MatchResultVote
+					comment?: string | null
 					updated_at?: string
 				}
 			}
@@ -466,6 +505,7 @@ export interface Database {
 			request_status: RequestStatus
 			notification_type: NotificationType
 			match_outcome: MatchOutcome
+			result_vote: MatchResultVote
 		}
 	}
 }
@@ -530,6 +570,7 @@ export type MatchRating = Database['public']['Tables']['match_ratings']['Row']
 export type PushToken = Database['public']['Tables']['push_tokens']['Row']
 export type MatchResult = Database['public']['Tables']['match_results']['Row']
 export type MatchPlayerStat = Database['public']['Tables']['match_player_stats']['Row']
+export type MatchResultConfirmation = Database['public']['Tables']['match_result_confirmations']['Row']
 export type InsertMatch = Database['public']['Tables']['matches']['Insert']
 export type MatchUpdate = Database['public']['Tables']['matches']['Update']
 export type Guest = { id: string; name: string }
@@ -545,6 +586,8 @@ export type MatchWithCreator = Match & {
 
 export type MatchResultWithPlayers = MatchResult & {
 	players: MatchPlayerStat[]
+	/** Votos de los demás jugadores, con el nombre de quien votó para poder mostrarlo. */
+	confirmations: (MatchResultConfirmation & { user: Pick<Profile, 'id' | 'full_name'> | null })[]
 }
 
 /** Una fila del formulario de resultado, tal como la recibe save_match_result. */
