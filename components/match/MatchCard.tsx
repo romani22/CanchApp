@@ -14,13 +14,20 @@ import { Image, ImageBackground, Text, TouchableOpacity, View } from 'react-nati
 interface MatchCardProps {
 	match: MatchWithCreator
 	relation?: 'created' | 'joined' | 'history'
+	/**
+	 * El partido ya se jugó y quien mira es el creador, que todavía no cargó el
+	 * resultado. Es el mismo aviso que la notificación local, pero dentro de la app:
+	 * la notificación vive en el dispositivo donde se programó, así que sin esto un
+	 * cambio de teléfono deja al creador sin ningún recordatorio.
+	 */
+	needsResult?: boolean
 	onPress: () => void
 	onJoin?: () => void
 }
 
 const MAX_VISIBLE_AVATARS = 4
 
-export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCardProps) {
+export function MatchCardComponent({ match, relation, needsResult, onPress, onJoin }: MatchCardProps) {
 	const { user } = useAuth()
 	const [selectedParticipant, setSelectedParticipant] = useState<ParticipantSummary | null>(null)
 	const matchDate = parseISO(match.starts_at)
@@ -68,6 +75,17 @@ export function MatchCardComponent({ match, relation, onPress, onJoin }: MatchCa
 								<View style={[styles.createdBadge, { backgroundColor: colors.error }]}>
 									<Ionicons name='close-circle' size={12} color='white' />
 									<Text style={[styles.relationText, { color: 'white' }]}>Cancelado</Text>
+								</View>
+							) : needsResult ? (
+								// Tiene prioridad sobre "Creador": que lo creó él ya lo sabe, que le
+								// falta cargar el resultado es lo que tiene que hacer.
+								//
+								// Va acá y no atado a relation === 'history' porque esa relación no se
+								// asigna nunca: en Mis Turnos los partidos del historial conservan su
+								// relación original ('created' o 'joined').
+								<View style={[styles.joinedBadge, { backgroundColor: colors.warning }]}>
+									<Ionicons name='clipboard' size={12} color={colors.backgroundDark} />
+									<Text style={styles.relationText}>Falta resultado</Text>
 								</View>
 							) : (
 								<>

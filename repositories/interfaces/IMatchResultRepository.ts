@@ -11,6 +11,12 @@ export interface IMatchResultRepository {
 	save(matchId: string, input: MatchResultInput): Promise<string>
 	/** Borra el resultado y devuelve el partido a open/full. */
 	remove(matchId: string): Promise<void>
+	/**
+	 * De una lista de partidos, cuáles ya tienen resultado cargado. Una consulta
+	 * para toda la lista: es para marcar en Mis Turnos los que le faltan resultado
+	 * al creador, y pedirlo de a uno sería un query por tarjeta.
+	 */
+	getMatchIdsWithResult(matchIds: string[]): Promise<Set<string>>
 	/** Estadísticas del usuario en cada deporte que jugó. */
 	getUserSportStats(userId: string): Promise<SportStats[]>
 	/** Estadísticas del usuario en un deporte, o null si no jugó ninguno. */

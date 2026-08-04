@@ -15,6 +15,10 @@ export const matchResultsService = {
 		return repositories.matchResults.remove(matchId)
 	},
 
+	async getMatchIdsWithResult(matchIds: string[]): Promise<Set<string>> {
+		return repositories.matchResults.getMatchIdsWithResult(matchIds)
+	},
+
 	async getUserSportStats(userId: string): Promise<SportStats[]> {
 		return repositories.matchResults.getUserSportStats(userId)
 	},

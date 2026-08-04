@@ -1,6 +1,7 @@
 import { styles } from '@/assets/styles/Personal-matches.styles'
 import { MatchCardComponent } from '@/components/match/MatchCard'
 import { useAuth } from '@/context/AuthContext'
+import { matchResultsService } from '@/services/matchResults.service'
 import { matchesService } from '@/services/matches.service'
 import { colors } from '@/theme/colors'
 import { MatchWithCreator } from '@/types/database.types'
@@ -24,6 +25,8 @@ export default function MyMatchesScreen() {
 	const [createdMatches, setCreatedMatches] = useState<PersonalMatch[]>([])
 	const [joinedMatches, setJoinedMatches] = useState<PersonalMatch[]>([])
 	const [historyMatches, setHistoryMatches] = useState<PersonalMatch[]>([])
+	// Partidos que creó, ya jugados y sin resultado cargado.
+	const [pendingResultIds, setPendingResultIds] = useState<Set<string>>(new Set())
 	const [isLoading, setIsLoading] = useState(true)
 	const [refreshing, setRefreshing] = useState(false)
 
@@ -45,9 +48,21 @@ export default function MyMatchesScreen() {
 			// Va a historial si ya pasó O fue cancelado (sin importar la fecha)
 			const isHistory = (m: PersonalMatch) => !isAfter(parseISO(m.starts_at), now) || m.status === 'cancelled'
 
+			const history = [...created, ...joined].filter(isHistory)
+
 			setCreatedMatches(created.filter(isActive))
 			setJoinedMatches(joined.filter(isActive))
-			setHistoryMatches([...created, ...joined].filter(isHistory))
+			setHistoryMatches(history)
+
+			// Cuáles de los partidos que creó y ya se jugaron están esperando que cargue
+			// el resultado. Una sola consulta para toda la lista, y sólo sobre los que
+			// puede cargar él: los cancelados no llevan resultado.
+			const candidates = history.filter((m) => m.relation === 'created' && m.status !== 'cancelled').map((m) => m.id)
+			const withResult = await matchResultsService.getMatchIdsWithResult(candidates).catch((err) => {
+				console.warn('[PersonalMatches] No se pudo saber qué partidos tienen resultado:', err)
+				return new Set<string>()
+			})
+			setPendingResultIds(new Set(candidates.filter((id) => !withResult.has(id))))
 		} catch (error) {
 			console.error('[PersonalMatches] Error:', error)
 		} finally {
@@ -88,7 +103,7 @@ export default function MyMatchesScreen() {
 		</View>
 	)
 
-	const renderItem = useCallback(({ item }: { item: PersonalMatch }) => <MatchCardComponent match={item} relation={item.relation} onPress={() => handleMatchPress(item)} />, [])
+	const renderItem = useCallback(({ item }: { item: PersonalMatch }) => <MatchCardComponent match={item} relation={item.relation} needsResult={pendingResultIds.has(item.id)} onPress={() => handleMatchPress(item)} />, [pendingResultIds])
 
 	return (
 		<SafeAreaView style={styles.container} edges={['top']}>

@@ -5,6 +5,7 @@ import { METRICS, MetricKey, SPORT_METRICS, isSetBased } from '@/constants/stats
 import { useAuth } from '@/context/AuthContext'
 import { matchResultsService } from '@/services/matchResults.service'
 import { matchesService } from '@/services/matches.service'
+import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
 import { borderRadius, spacing } from '@/theme/spacing'
 import { typography } from '@/theme/typography'
@@ -245,6 +246,9 @@ export default function MatchResultScreen() {
 				notes: notes.trim() || null,
 				players,
 			})
+
+			// Ya está cargado: que no siga avisando que falta.
+			pushNotificationService.cancelResultReminder(id as string).catch(() => {})
 
 			// Los totales del perfil los recalcula un trigger al guardar las stats:
 			// hay que releer el perfil para que las cards muestren los nuevos números.

@@ -60,6 +60,25 @@ export const describeSportLevels = (sportLevels: SportLevels | null | undefined)
 		})
 		.join(' · ')
 
+/**
+ * Duración estimada de un partido, por deporte, en minutos.
+ *
+ * matches.end_time existe desde 001, pero es un TIME que nadie escribe: 006 migró
+ * date + start_time a starts_at y lo dejó ahí. O sea que no hay dato de cuándo
+ * termina un partido y hay que estimarlo. Se usa sólo para avisarle al creador que
+ * cargue el resultado, así que errarle veinte minutos no rompe nada.
+ */
+export const SPORT_DURATION_MINUTES: Record<SportType, number> = {
+	futbol: 90,
+	basquet: 60,
+	voley: 75,
+	tenis: 90,
+	padel: 90,
+}
+
+/** Momento estimado en que terminó el partido. */
+export const estimateMatchEnd = (sport: SportType, startsAt: Date): Date => new Date(startsAt.getTime() + SPORT_DURATION_MINUTES[sport] * 60_000)
+
 /** Colores y etiquetas de los equipos en modo two_teams. */
 export const TEAM_CONFIG = {
 	A: { label: 'Equipo A', color: colors.info, bg: `${colors.info}18`, border: `${colors.info}40` },

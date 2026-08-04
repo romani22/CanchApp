@@ -191,17 +191,61 @@ export const pushNotificationService = {
 		}
 	},
 
+	/**
+	 * Le avisa al CREADOR, un rato después de que el partido terminó, que cargue el
+	 * resultado. Sin esto un partido puede quedar para siempre sin resultado y las
+	 * estadísticas de todos los que jugaron se quedan quietas.
+	 *
+	 * Es una notificación local programada, no un push del servidor: el envío por
+	 * pg_net de 014 está sin activar, así que el servidor hoy no puede mandar nada.
+	 * La contra es que vive en el dispositivo donde se programó, y por eso el aviso
+	 * también aparece dentro de la app (banner en el detalle y "Falta resultado" en
+	 * Mis Turnos), que es lo que cubre el caso de haber cambiado de teléfono.
+	 */
+	async scheduleResultReminder(matchId: string, matchTitle: string, endsAt: Date): Promise<string | null> {
+		if (isExpoGo) return null
+		try {
+			// 15 minutos después del final estimado: si el partido se estiró un poco,
+			// el aviso no le llega al creador mientras todavía está jugando.
+			const reminderTime = new Date(endsAt.getTime() + 15 * 60 * 1000)
+			if (reminderTime <= new Date()) return null
+			return await this.scheduleLocalNotification(
+				{
+					title: '📊 ¿Cómo salió?',
+					body: `Cargá el resultado de "${matchTitle}" para que cuente en las estadísticas`,
+					// type 'match_result' y no 'match_reminder': cancelar uno no tiene que
+					// pisar al otro, y los dos pueden estar programados a la vez.
+					data: { match_id: matchId, type: 'match_result' },
+					channelId: 'match_reminders',
+				},
+				reminderTime,
+			)
+		} catch (error) {
+			console.error('Error scheduling result reminder:', error)
+			return null
+		}
+	},
+
 	async cancelMatchReminder(matchId: string): Promise<void> {
+		return this.cancelScheduledForMatch(matchId, 'match_reminder')
+	},
+
+	async cancelResultReminder(matchId: string): Promise<void> {
+		return this.cancelScheduledForMatch(matchId, 'match_result')
+	},
+
+	/** Cancela los avisos locales de un partido de un tipo dado. */
+	async cancelScheduledForMatch(matchId: string, type: NotificationType): Promise<void> {
 		if (isExpoGo) return
 		try {
 			const Notifications = getNotifications()
 			const scheduled = await Notifications.getAllScheduledNotificationsAsync()
-			const reminder = scheduled.find((n) => n.content.data?.match_id === matchId && n.content.data?.type === 'match_reminder')
-			if (reminder) {
-				await Notifications.cancelScheduledNotificationAsync(reminder.identifier)
-			}
+			// Todos los que matcheen, no sólo el primero: si alguna vez se programó de
+			// más, cancelar tiene que dejar el partido sin avisos pendientes de verdad.
+			const matching = scheduled.filter((n) => n.content.data?.match_id === matchId && n.content.data?.type === type)
+			await Promise.all(matching.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)))
 		} catch (error) {
-			console.error('Error cancelling match reminder:', error)
+			console.error('Error cancelling scheduled notification for match:', error)
 		}
 	},
 

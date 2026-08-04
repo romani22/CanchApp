@@ -9,7 +9,7 @@ import { profilesService } from '@/services/profiles.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
-import { TEAM_CONFIG, buildMatchTitle, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
+import { TEAM_CONFIG, buildMatchTitle, estimateMatchEnd, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
 import { SkillLevel, SportLevels, SportType, TeamMode, TeamSlot } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
@@ -250,6 +250,10 @@ export default function CreateMatchScreen() {
 
 			// Programar recordatorio local 10 minutos antes del partido para el creador
 			pushNotificationService.scheduleMatchReminder(match.id, match.title, match.venue_name, new Date(starts_at)).catch((err) => console.warn('[Create] Could not schedule reminder:', err))
+
+			// Y el aviso de "cargá el resultado" para después de que termine. Se programa
+			// acá, al crearlo, para que le llegue aunque no vuelva a abrir el partido.
+			pushNotificationService.scheduleResultReminder(match.id, match.title, estimateMatchEnd(sport, new Date(starts_at))).catch((err) => console.warn('[Create] Could not schedule result reminder:', err))
 
 			Alert.alert('¡Partido publicado!', 'Ya está visible para otros jugadores.', [{ text: 'Ver partido', onPress: () => router.replace(`/match/${match.id}`) }])
 		} catch (error) {

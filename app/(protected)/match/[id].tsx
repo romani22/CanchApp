@@ -3,7 +3,7 @@ import { MatchResultCard } from '@/components/match/MatchResultCard'
 import ParticipantsMatch from '@/components/match/ParticipantsMatch'
 import { TeamView } from '@/components/match/TeamView'
 import Loader from '@/components/ui/Loader'
-import { levelLabels } from '@/constants/matches'
+import { estimateMatchEnd, levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
 import { matchResultsService } from '@/services/matchResults.service'
 import { matchesService } from '@/services/matches.service'
@@ -137,6 +137,35 @@ export default function MatchDetail() {
 		}
 	}, [isParticipant, matchId, matchTitle, matchVenue, matchStartsAt, matchStatus])
 
+	// Aviso de "cargá el resultado", sólo para el creador. Se programa al crear el
+	// partido; acá se reasegura (por si lo creó en otro dispositivo o cambió la
+	// fecha) y se cancela en cuanto el resultado existe o el partido se cancela.
+	const isCreatorOfMatch = !!user && !!match && match.creator_id === user.id
+	const hasResult = !!result
+	const matchSport = match?.sport
+
+	useEffect(() => {
+		if (!isCreatorOfMatch || !matchId || !matchStartsAt || !matchTitle || !matchSport) return
+
+		if (hasResult || matchStatus === 'cancelled') {
+			pushNotificationService.cancelResultReminder(matchId).catch(() => {})
+			return
+		}
+
+		let stale = false
+		pushNotificationService
+			.cancelResultReminder(matchId)
+			.then(() => {
+				if (stale) return
+				return pushNotificationService.scheduleResultReminder(matchId, matchTitle, estimateMatchEnd(matchSport, parseISO(matchStartsAt)))
+			})
+			.catch((err) => console.warn('[MatchDetail] No se pudo programar el aviso de resultado:', err))
+
+		return () => {
+			stale = true
+		}
+	}, [isCreatorOfMatch, matchId, matchTitle, matchSport, matchStartsAt, matchStatus, hasResult])
+
 	// ── Solicitar entrar ──────────────────────────────────────────────────
 	// Nadie se anota solo: se pide entrar y el creador acepta o rechaza. Antes esto
 	// insertaba directo en match_participants, así que cualquiera que viera el
@@ -208,8 +237,10 @@ export default function MatchDetail() {
 		try {
 			setCancelling(true)
 			await matchesService.cancel(id as string)
-			// Cancela el recordatorio local si existe
+			// Cancela los avisos locales si existen: un partido cancelado no empieza ni
+			// necesita resultado.
 			pushNotificationService.cancelMatchReminder(id as string).catch(() => {})
+			pushNotificationService.cancelResultReminder(id as string).catch(() => {})
 			router.replace('/(protected)/(tabs)/My-Matches')
 		} catch (err) {
 			Alert.alert('Error', 'No se pudo cancelar el partido. Intentá de nuevo.')

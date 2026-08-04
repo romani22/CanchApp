@@ -50,6 +50,14 @@ export class SupabaseMatchResultRepository implements IMatchResultRepository {
 		if (error) throw error
 	}
 
+	async getMatchIdsWithResult(matchIds: string[]): Promise<Set<string>> {
+		if (matchIds.length === 0) return new Set()
+
+		const { data, error } = await supabase.from('match_results').select('match_id').in('match_id', matchIds)
+		if (error) throw error
+		return new Set((data ?? []).map((row) => row.match_id as string))
+	}
+
 	async getUserSportStats(userId: string): Promise<SportStats[]> {
 		const { data, error } = await supabase.from('user_sport_stats').select('*').eq('user_id', userId)
 		if (error) throw error
