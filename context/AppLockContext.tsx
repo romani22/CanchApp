@@ -14,7 +14,7 @@ import { AppState, AppStateStatus } from 'react-native'
  * El criterio ahora:
  *
  *   · minimizar y volver enseguida  → no pasa nada, la sesión sigue viva
- *   · más de 15 minutos sin usar la app (minimizada o cerrada) → se pide
+ *   · más de 30 minutos sin usar la app (minimizada o cerrada) → se pide
  *     autenticación del dispositivo (huella / Face ID / PIN) para volver a entrar
  *
  * Clave: bloquear NO es cerrar sesión. La sesión de Supabase y el push token
@@ -34,7 +34,7 @@ import { AppState, AppStateStatus } from 'react-native'
  */
 
 const LAST_ACTIVE_KEY = 'canchapp:last_active_at'
-const INACTIVITY_LIMIT_MS = 15 * 60 * 1000
+const INACTIVITY_LIMIT_MS = 30 * 60 * 1000
 
 interface AppLockContextType {
 	/** true cuando hay sesión pero hace falta autenticarse para seguir. */

@@ -54,7 +54,7 @@ export function LockScreen() {
 				</View>
 
 				<Text style={styles.title}>{firstName ? `Hola de nuevo, ${firstName}` : 'Sesión bloqueada'}</Text>
-				<Text style={styles.subtitle}>Pasaron más de 15 minutos sin actividad. Desbloqueá con tu huella, cara o PIN para seguir donde estabas.</Text>
+				<Text style={styles.subtitle}>Pasaron más de 30 minutos sin actividad. Desbloqueá con tu huella, cara o PIN para seguir donde estabas.</Text>
 
 				<TouchableOpacity style={[styles.unlockButton, authenticating && styles.unlockButtonDisabled]} onPress={handleUnlock} disabled={authenticating}>
 					{authenticating ? (

@@ -1,11 +1,11 @@
 import { styles } from '@/assets/styles/Profile.styles'
-import { sports as sportOptions, sportsFromLevels } from '@/constants/matches'
+import { sports as sportOptions } from '@/constants/matches'
 import { buildMetricRows, buildStatCards } from '@/constants/stats'
 import { matchResultsService } from '@/services/matchResults.service'
 import { colors } from '@/theme/colors'
 import { borderRadius, spacing } from '@/theme/spacing'
 import { typography } from '@/theme/typography'
-import { SportLevels, SportStats, SportType } from '@/types/database.types'
+import { SportStats, SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
@@ -16,8 +16,6 @@ type Props = {
 	totalMatches: number
 	totalWins: number
 	rating: number
-	/** Deportes que juega: definen las opciones del selector. */
-	sportLevels: SportLevels
 }
 
 /** 'all' = todos los deportes juntos. */
@@ -30,8 +28,14 @@ type Selection = SportType | 'all'
  * user_sport_stats). Antes esta grilla leía profiles.total_matches y total_wins,
  * que nadie escribía nunca: mostraba 0 partidos y 0% de victorias para todo el
  * mundo. Un deporte sin partidos con resultado ahora lo dice en vez de fingir un 0.
+ *
+ * El selector lista SIEMPRE todos los deportes, no sólo los del perfil o los que
+ * tienen estadísticas: así el usuario puede mirar cualquiera sin tener que
+ * agregarlo a sus deportes de interés primero, y la lista no cambia de tamaño
+ * según el estado de su perfil. Los que no tienen partidos con resultado muestran
+ * el cartel de "todavía no hay".
  */
-function StatsProfile({ userId, totalMatches, totalWins, rating, sportLevels }: Props) {
+function StatsProfile({ userId, totalMatches, totalWins, rating }: Props) {
 	const [statsBySport, setStatsBySport] = useState<Record<string, SportStats>>({})
 	const [loading, setLoading] = useState(true)
 	const [selected, setSelected] = useState<Selection>('all')
@@ -55,11 +59,6 @@ function StatsProfile({ userId, totalMatches, totalWins, rating, sportLevels }: 
 		}
 	}, [userId])
 
-	// Los deportes del perfil, más cualquiera en el que tenga partidos jugados
-	// (puede haber jugado uno que después sacó de su lista). Orden canónico.
-	const played = new Set([...sportsFromLevels(sportLevels), ...(Object.keys(statsBySport) as SportType[])])
-	const availableSports = sportOptions.filter((s) => played.has(s.key))
-
 	const winRate = totalMatches > 0 ? Math.round((totalWins / totalMatches) * 100) : 0
 	const sportStats = selected === 'all' ? null : (statsBySport[selected] ?? null)
 
@@ -77,14 +76,12 @@ function StatsProfile({ userId, totalMatches, totalWins, rating, sportLevels }: 
 
 	return (
 		<View style={local.wrapper}>
-			{availableSports.length > 0 && (
-				<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={local.selectorRow}>
-					<SelectorChip label='Todos' active={selected === 'all'} onPress={() => setSelected('all')} />
-					{availableSports.map((sport) => (
-						<SelectorChip key={sport.key} label={sport.label} icon={sport.icon} active={selected === sport.key} onPress={() => setSelected(sport.key)} />
-					))}
-				</ScrollView>
-			)}
+			<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={local.selectorRow}>
+				<SelectorChip label='Todos' active={selected === 'all'} onPress={() => setSelected('all')} />
+				{sportOptions.map((sport) => (
+					<SelectorChip key={sport.key} label={sport.label} icon={sport.icon} active={selected === sport.key} onPress={() => setSelected(sport.key)} />
+				))}
+			</ScrollView>
 
 			{loading ? (
 				<View style={local.placeholder}>
