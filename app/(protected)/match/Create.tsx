@@ -7,9 +7,8 @@ import { useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { profilesService } from '@/services/profiles.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
-import { pushNotificationService } from '@/services/pushnotifications.service'
 import { colors } from '@/theme/colors'
-import { TEAM_CONFIG, buildMatchTitle, estimateMatchEnd, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
+import { TEAM_CONFIG, buildMatchTitle, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
 import { SkillLevel, SportLevels, SportType, TeamMode, TeamSlot } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
@@ -248,12 +247,9 @@ export default function CreateMatchScreen() {
 			// que entran directo: la aprobación es para quien pide entrar desde Explorar.
 			await Promise.all(confirmed.map((p) => (p.type === 'user' ? matchParticipantsService.addParticipant(match.id, (p as any).userId, p.teamSlot ?? undefined) : matchParticipantsService.addGuest(match.id, p.name, p.teamSlot ?? undefined))))
 
-			// Programar recordatorio local 10 minutos antes del partido para el creador
-			pushNotificationService.scheduleMatchReminder(match.id, match.title, match.venue_name, new Date(starts_at)).catch((err) => console.warn('[Create] Could not schedule reminder:', err))
-
-			// Y el aviso de "cargá el resultado" para después de que termine. Se programa
-			// acá, al crearlo, para que le llegue aunque no vuelva a abrir el partido.
-			pushNotificationService.scheduleResultReminder(match.id, match.title, estimateMatchEnd(sport, new Date(starts_at))).catch((err) => console.warn('[Create] Could not schedule result reminder:', err))
+			// El recordatorio del partido y el aviso de "cargá el resultado" los encola el
+			// servidor cuando corresponde (024_notifications_single_channel.sql): no hay
+			// nada que programar acá, y así también le llegan a quien se suma después.
 
 			Alert.alert('¡Partido publicado!', 'Ya está visible para otros jugadores.', [{ text: 'Ver partido', onPress: () => router.replace(`/match/${match.id}`) }])
 		} catch (error) {

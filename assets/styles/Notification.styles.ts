@@ -19,12 +19,23 @@ export const styles = StyleSheet.create({
 		borderBottomColor: colors.borderDark,
 	},
 	header: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
 		paddingHorizontal: spacing.lg,
 		paddingVertical: spacing.md,
 	},
 	headerTitle: {
 		...typography.h2,
 		color: colors.textPrimaryDark,
+	},
+	headerActions: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: spacing.sm,
+	},
+	headerAction: {
+		padding: spacing.xs,
 	},
 	emptyContainer: {
 		flex: 1,
@@ -62,6 +73,20 @@ export const styles = StyleSheet.create({
 		...typography.bodySmall,
 		color: colors.textSecondaryDark,
 		marginTop: 2,
+	},
+	// Fila del título: deja el "hace 2 horas" pegado al margen derecho.
+	titleRow: {
+		flexDirection: 'row',
+		alignItems: 'baseline',
+		justifyContent: 'space-between',
+		gap: spacing.sm,
+	},
+	titleText: {
+		flex: 1,
+	},
+	time: {
+		...typography.labelSmall,
+		color: colors.textSecondaryDark,
 	},
 	unreadDot: {
 		width: 8,

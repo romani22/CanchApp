@@ -70,7 +70,7 @@ export class SupabaseNotificationRepository implements INotificationRepository {
 	async getSettings(userId: string): Promise<NotificationSettings | null> {
 		const { data, error } = await supabase
 			.from('profiles')
-			.select('notifications_enabled, notification_radius, notify_new_matches, notify_join_requests, notify_request_response, notify_player_joined, notify_match_reminder')
+			.select('notifications_enabled, notification_radius, notify_new_matches, notify_join_requests, notify_request_response, notify_player_joined, notify_match_reminder, notify_match_result')
 			.eq('id', userId)
 			.single()
 		if (error) throw error

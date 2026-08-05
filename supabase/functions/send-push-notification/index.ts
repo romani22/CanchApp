@@ -10,6 +10,7 @@ const TYPE_TO_PREF: Record<string, string> = {
 	request_rejected: 'notify_request_response',
 	player_joined: 'notify_player_joined',
 	match_reminder: 'notify_match_reminder',
+	match_result: 'notify_match_result',
 	match_cancelled: 'notifications_enabled', // always send if global is on
 }
 
@@ -30,7 +31,7 @@ Deno.serve(async (req) => {
 		// 1. Check user notification preferences
 		const { data: profile, error: profileError } = await supabase
 			.from('profiles')
-			.select('notifications_enabled, notify_new_matches, notify_join_requests, notify_request_response, notify_player_joined, notify_match_reminder')
+			.select('notifications_enabled, notify_new_matches, notify_join_requests, notify_request_response, notify_player_joined, notify_match_reminder, notify_match_result')
 			.eq('id', notification.user_id)
 			.single()
 

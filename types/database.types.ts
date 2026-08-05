@@ -54,6 +54,7 @@ export interface Database {
 					notify_request_response: boolean
 					notify_player_joined: boolean
 					notify_match_reminder: boolean
+					notify_match_result: boolean
 					onboarding_completed: boolean
 					created_at: string
 					updated_at: string
@@ -81,6 +82,7 @@ export interface Database {
 					notify_request_response?: boolean
 					notify_player_joined?: boolean
 					notify_match_reminder?: boolean
+					notify_match_result?: boolean
 					onboarding_completed?: boolean
 					created_at?: string
 					updated_at?: string
@@ -108,6 +110,7 @@ export interface Database {
 					notify_request_response?: boolean
 					notify_player_joined?: boolean
 					notify_match_reminder?: boolean
+					notify_match_result?: boolean
 					onboarding_completed?: boolean
 					updated_at?: string
 				}
@@ -635,6 +638,7 @@ export type NotificationSettings = {
 	notify_request_response: boolean
 	notify_player_joined: boolean
 	notify_match_reminder: boolean
+	notify_match_result: boolean
 }
 
 // Match listing filter types

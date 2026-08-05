@@ -56,7 +56,13 @@ const NOTIFICATION_TYPES: NotificationTypeConfig[] = [
 		key: 'notify_match_reminder',
 		icon: 'alarm-outline',
 		title: 'Recordatorios',
-		description: '10 minutos antes de que empiece tu partido',
+		description: 'Un rato antes de que empiece tu partido',
+	},
+	{
+		key: 'notify_match_result',
+		icon: 'stats-chart-outline',
+		title: 'Resultados',
+		description: 'Cuando falta cargar el resultado, o alguien lo carga u objeta',
 	},
 ]
 

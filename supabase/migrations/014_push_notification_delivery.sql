@@ -86,6 +86,11 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- =====================================================
 -- PARA ACTIVAR EL PUSH DELIVERY (elegir una opcion):
 --
+-- YA RESUELTO: se uso la OPCION A. El webhook se llama `send_notification`
+-- (Dashboard -> Integrations -> Database Webhooks) y dispara en INSERT sobre
+-- notifications. La funcion call_push_notification_edge_function de mas arriba es
+-- de la opcion B y quedo sin usar: no hay trigger que la llame.
+--
 -- OPCION A - Dashboard (recomendado, sin ALTER)
 -- 1. Supabase Dashboard -> Database -> Webhooks
 -- 2. "Create a new hook"

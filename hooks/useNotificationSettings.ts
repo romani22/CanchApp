@@ -50,6 +50,7 @@ export function useNotificationSettings() {
 				notify_request_response: currentProfile.notify_request_response,
 				notify_player_joined: currentProfile.notify_player_joined,
 				notify_match_reminder: currentProfile.notify_match_reminder,
+				notify_match_result: currentProfile.notify_match_result,
 			})
 			setLoading(false)
 			initializedRef.current = true

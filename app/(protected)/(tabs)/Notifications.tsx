@@ -7,8 +7,8 @@ import { colors } from '@/theme/colors'
 import { NotificationWithData } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
-import { useCallback, useState } from 'react'
-import { FlatList, RefreshControl, Text, View } from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { Alert, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 export default function NotificationsScreen() {
@@ -38,6 +38,15 @@ export default function NotificationsScreen() {
 		}, [loadNotifications]),
 	)
 
+	// Estando parado en esta pantalla las notificaciones nuevas tienen que aparecer
+	// solas: antes había que salir y volver. Se usa la suscripción de sólo INSERT
+	// para no pisar el canal que NotificationsContext ya tiene abierto para el badge.
+	useEffect(() => {
+		if (!user?.id) return
+		const subscription = notificationsService.subscribe(user.id, () => loadNotifications())
+		return () => subscription.unsubscribe()
+	}, [user?.id, loadNotifications])
+
 	const handleRefresh = () => {
 		setRefreshing(true)
 		loadNotifications()
@@ -53,12 +62,87 @@ export default function NotificationsScreen() {
 		}
 	}
 
-	const renderItem = ({ item }: { item: NotificationWithData }) => <NotificationItem item={item} onPress={() => handlePress(item)} />
+	// Borrar una: los cambios se pintan de una y se revierten si el server falla, así
+	// la lista nunca miente sobre lo que quedó guardado.
+	const handleLongPress = (notification: NotificationWithData) => {
+		Alert.alert('Borrar notificación', '¿Sacarla del listado?', [
+			{ text: 'Cancelar', style: 'cancel' },
+			{
+				text: 'Borrar',
+				style: 'destructive',
+				onPress: () => {
+					const previous = notifications
+					setNotifications((prev) => prev.filter((n) => n.id !== notification.id))
+					notificationsService
+						.delete(notification.id)
+						.then(() => refreshCount())
+						.catch((err) => {
+							console.error('[Notifications] Error borrando:', err)
+							setNotifications(previous)
+							Alert.alert('Error', 'No se pudo borrar la notificación.')
+						})
+				},
+			},
+		])
+	}
+
+	const handleMarkAllRead = () => {
+		if (!user?.id) return
+		const previous = notifications
+		setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+		notificationsService
+			.markAllAsRead(user.id)
+			.then(() => refreshCount())
+			.catch((err) => {
+				console.error('[Notifications] Error marcando todas:', err)
+				setNotifications(previous)
+			})
+	}
+
+	const handleDeleteAll = () => {
+		if (!user?.id) return
+		Alert.alert('Borrar todas', 'Se van a borrar todas tus notificaciones. No se puede deshacer.', [
+			{ text: 'Cancelar', style: 'cancel' },
+			{
+				text: 'Borrar todas',
+				style: 'destructive',
+				onPress: () => {
+					const previous = notifications
+					setNotifications([])
+					notificationsService
+						.deleteAll(user.id)
+						.then(() => refreshCount())
+						.catch((err) => {
+							console.error('[Notifications] Error borrando todas:', err)
+							setNotifications(previous)
+							Alert.alert('Error', 'No se pudieron borrar las notificaciones.')
+						})
+				},
+			},
+		])
+	}
+
+	const hasUnread = notifications.some((n) => !n.is_read)
+
+	const renderItem = ({ item }: { item: NotificationWithData }) => <NotificationItem item={item} onPress={() => handlePress(item)} onLongPress={() => handleLongPress(item)} />
 
 	return (
 		<SafeAreaView style={styles.screenContainer} edges={['top']}>
 			<View style={styles.header}>
 				<Text style={styles.headerTitle}>Notificaciones</Text>
+
+				{notifications.length > 0 && (
+					<View style={styles.headerActions}>
+						{hasUnread && (
+							<TouchableOpacity style={styles.headerAction} onPress={handleMarkAllRead} accessibilityLabel='Marcar todas como leídas' hitSlop={8}>
+								<Ionicons name='checkmark-done-outline' size={22} color={colors.primary} />
+							</TouchableOpacity>
+						)}
+						<TouchableOpacity style={styles.headerAction} onPress={handleDeleteAll} accessibilityLabel='Borrar todas' hitSlop={8}>
+							<Ionicons name='trash-outline' size={20} color={colors.textSecondaryDark} />
+						</TouchableOpacity>
+					</View>
+				)}
 			</View>
 			<FlatList
 				data={notifications}

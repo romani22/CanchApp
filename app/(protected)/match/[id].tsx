@@ -3,12 +3,11 @@ import { MatchResultCard } from '@/components/match/MatchResultCard'
 import ParticipantsMatch from '@/components/match/ParticipantsMatch'
 import { TeamView } from '@/components/match/TeamView'
 import Loader from '@/components/ui/Loader'
-import { estimateMatchEnd, levelLabels } from '@/constants/matches'
+import { levelLabels } from '@/constants/matches'
 import { useAuth } from '@/context/AuthContext'
 import { matchResultsService } from '@/services/matchResults.service'
 import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
-import { pushNotificationService } from '@/services/pushnotifications.service'
 import { requestsService } from '@/services/requests.service'
 import { colors } from '@/theme/colors'
 import { JoinRequest, MatchResultVote, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
@@ -109,63 +108,9 @@ export default function MatchDetail() {
 	const hasPendingRequest = myRequest?.status === 'pending'
 	const wasRejected = myRequest?.status === 'rejected'
 
-	// Recordatorio local del partido. Antes se programaba al apretar "Unirme", que
-	// ahora sólo manda una solicitud: el momento en que el jugador está realmente
-	// adentro es cuando abre un partido al que ya lo aceptaron.
-	const matchId = match?.id
-	const matchTitle = match?.title
-	const matchVenue = match?.venue_name
-	const matchStartsAt = match?.starts_at
-	const matchStatus = match?.status
-
-	useEffect(() => {
-		if (!isParticipant || !matchId || !matchStartsAt || !matchTitle || !matchVenue) return
-		if (matchStatus === 'cancelled' || isPast(parseISO(matchStartsAt))) return
-
-		let stale = false
-		// cancelar y volver a programar: scheduleMatchReminder no deduplica, así que
-		// sin esto cada apertura del partido dejaría un recordatorio más.
-		pushNotificationService
-			.cancelMatchReminder(matchId)
-			.then(() => {
-				if (stale) return
-				return pushNotificationService.scheduleMatchReminder(matchId, matchTitle, matchVenue, new Date(matchStartsAt))
-			})
-			.catch((err) => console.warn('[MatchDetail] No se pudo programar el recordatorio:', err))
-
-		return () => {
-			stale = true
-		}
-	}, [isParticipant, matchId, matchTitle, matchVenue, matchStartsAt, matchStatus])
-
-	// Aviso de "cargá el resultado", sólo para el creador. Se programa al crear el
-	// partido; acá se reasegura (por si lo creó en otro dispositivo o cambió la
-	// fecha) y se cancela en cuanto el resultado existe o el partido se cancela.
-	const isCreatorOfMatch = !!user && !!match && match.creator_id === user.id
-	const hasResult = !!result
-	const matchSport = match?.sport
-
-	useEffect(() => {
-		if (!isCreatorOfMatch || !matchId || !matchStartsAt || !matchTitle || !matchSport) return
-
-		if (hasResult || matchStatus === 'cancelled') {
-			pushNotificationService.cancelResultReminder(matchId).catch(() => {})
-			return
-		}
-
-		let stale = false
-		pushNotificationService
-			.cancelResultReminder(matchId)
-			.then(() => {
-				if (stale) return
-				return pushNotificationService.scheduleResultReminder(matchId, matchTitle, estimateMatchEnd(matchSport, parseISO(matchStartsAt)))
-			})
-			.catch((err) => console.warn('[MatchDetail] No se pudo programar el aviso de resultado:', err))
-
-		return () => {
-			stale = true
-		}
-	}, [isCreatorOfMatch, matchId, matchTitle, matchSport, matchStartsAt, matchStatus, hasResult])
+	// Los recordatorios (partido que arranca, resultado que falta) ya no se programan
+	// acá: los encola el servidor cada 5 minutos y llegan como cualquier otra
+	// notificación. Ver 024_notifications_single_channel.sql.
 
 	// ── Solicitar entrar ──────────────────────────────────────────────────
 	// Nadie se anota solo: se pide entrar y el creador acepta o rechaza. Antes esto
@@ -279,10 +224,9 @@ export default function MatchDetail() {
 		try {
 			setCancelling(true)
 			await matchesService.cancel(id as string)
-			// Cancela los avisos locales si existen: un partido cancelado no empieza ni
-			// necesita resultado.
-			pushNotificationService.cancelMatchReminder(id as string).catch(() => {})
-			pushNotificationService.cancelResultReminder(id as string).catch(() => {})
+			// No hay avisos que cancelar: el encolado del servidor mira el estado del
+			// partido, y uno cancelado no entra ni en el recordatorio ni en el pedido
+			// de resultado.
 			router.replace('/(protected)/(tabs)/My-Matches')
 		} catch (err) {
 			Alert.alert('Error', 'No se pudo cancelar el partido. Intentá de nuevo.')
