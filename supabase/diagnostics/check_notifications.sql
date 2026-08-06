@@ -6,6 +6,10 @@
 -- Desde 024 hay un solo canal: todo nace como fila en `notifications` y de ahí
 -- sale al teléfono. Los bloques 1 a 3 verifican los dos enganches que se activan
 -- a mano y que, si faltan, dejan el sistema a medias.
+--
+-- SI LA NOTIFICACION APARECE EN EL LISTADO PERO NO LLEGA AL TELEFONO: ir directo
+-- al bloque 12, que resume en una fila las tres razones por las que la Edge
+-- Function corta sin enviar.
 -- =====================================================
 
 -- ── 1. ¿El envío al teléfono está enganchado? ───────────────────────────────
@@ -107,15 +111,70 @@ FROM information_schema.triggers
 WHERE event_object_table IN ('matches', 'join_requests', 'match_players', 'match_participants')
 ORDER BY event_object_table;
 
--- ── 12. Test de punta a punta ───────────────────────────────────────────────
+-- ── 12. Está en el listado y no llegó al teléfono: ¿por qué? ────────────────
+-- La Edge Function corta sin enviar por tres razones, y las tres se ven acá:
+-- el global apagado, la preferencia del tipo apagada, o cero tokens activos.
+-- El CASE es espejo de TYPE_TO_PREF en supabase/functions/send-push-notification:
+-- si se agrega un tipo allá, se agrega acá.
+--
+-- Si las tres columnas están bien y la notificación igual no sonó, el corte está
+-- más adelante y ya no se ve desde SQL: Dashboard -> Edge Functions ->
+-- send-push-notification -> Logs. Lo que loguea dice exactamente dónde paró.
+--   "Profile not found"          -> la función deployada pide una columna que la
+--                                   base no tiene (024 sin aplicar en remoto).
+--   "No tokens"                  -> ver el bloque 8.
+--   "Expo Push API error" / error por token -> credenciales FCM (`eas credentials`).
+--   "Push sent to N device(s)"   -> salió de Supabase; el problema es del device.
+-- Y si no hay ningún log para esa notificación, no se disparó el webhook: bloque 1.
+SELECT n.created_at,
+       n.type,
+       n.title,
+       p.full_name,
+       p.notifications_enabled                                                     AS global,
+       CASE n.type
+           WHEN 'new_match' THEN p.notify_new_matches
+           WHEN 'join_request' THEN p.notify_join_requests
+           WHEN 'request_accepted' THEN p.notify_request_response
+           WHEN 'request_rejected' THEN p.notify_request_response
+           WHEN 'player_joined' THEN p.notify_player_joined
+           WHEN 'match_reminder' THEN p.notify_match_reminder
+           WHEN 'match_result' THEN p.notify_match_result
+           -- match_cancelled y cualquier tipo sin preferencia propia: sale
+           -- siempre que el global esté prendido.
+           ELSE p.notifications_enabled
+           END                                                                     AS preferencia_del_tipo,
+       (SELECT COUNT(*)
+        FROM push_tokens t
+        WHERE t.user_id = n.user_id
+          AND t.is_active)                                                         AS tokens_activos
+FROM notifications n
+         JOIN profiles p ON p.id = n.user_id
+ORDER BY n.created_at DESC
+LIMIT 10;
+
+
+-- ── 13. Test de punta a punta ───────────────────────────────────────────────
 -- ATENCION: crea una notificación real. Si el bloque 1 mostró el trigger, esto
 -- tiene que sonar en el teléfono.
+--
+-- El tipo es 'match_cancelled' a propósito: es el único que la Edge Function no
+-- filtra por preferencia individual (su entrada en TYPE_TO_PREF es el switch
+-- global), así que el test no puede fallar por un toggle apagado y aísla el
+-- problema en la entrega.
+--
+-- Le pega al dispositivo del último token activo. Para elegir otro, reemplazar
+-- el subselect por el user_id, o filtrar por token:
+--   WHERE token = 'ExponentPushToken[...]'
+--
+-- Devuelve el UUID de la notificación: con ese id se busca la corrida en
+-- Dashboard -> Edge Functions -> send-push-notification -> Logs. Tiene que decir
+-- "Push sent to N device(s)" y no traer ningún "Push error for token".
 /*
 SELECT create_notification(
-    'TU_USER_ID_AQUI'::uuid,
-    'new_match',
-    'Test de push notification',
-    'Si ves esto en tu dispositivo, el sistema funciona',
-    '{"match_id": null}'::jsonb
+    (SELECT user_id FROM push_tokens WHERE is_active ORDER BY last_used_at DESC LIMIT 1),
+    'match_cancelled',
+    '🔔 Test de push',
+    'Si esto te suena en el teléfono, la entrega funciona',
+    '{}'::jsonb
 );
 */

@@ -49,6 +49,10 @@ jest.mock('expo-notifications', () => ({
   addNotificationResponseReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
   scheduleNotificationAsync: jest.fn().mockResolvedValue('notification-id'),
   cancelAllScheduledNotificationsAsync: jest.fn().mockResolvedValue(undefined),
+  setNotificationChannelAsync: jest.fn().mockResolvedValue(null),
+  deleteNotificationChannelAsync: jest.fn().mockResolvedValue(undefined),
+  AndroidImportance: { MAX: 5, HIGH: 4, DEFAULT: 3, LOW: 2, MIN: 1, NONE: 0 },
+  AndroidNotificationVisibility: { UNKNOWN: 0, PUBLIC: 1, PRIVATE: 2, SECRET: 3 },
 }))
 
 // ── expo-device mock ─────────────────────────────────────────────────────────

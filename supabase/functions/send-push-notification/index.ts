@@ -2,6 +2,13 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
 
+// Espejo de ANDROID_CHANNEL_ID en services/pushnotifications.service.ts, donde
+// está la explicación del sufijo de versión. Los dos tienen que moverse juntos:
+// Android descarta sin mostrar nada un push cuyo canal no existe en el
+// dispositivo, así que un build nuevo con la función vieja (o al revés) deja el
+// teléfono mudo aunque el envío diga que salió bien.
+const ANDROID_CHANNEL_ID = 'canchapp-v2'
+
 // Maps notification type → profile preference column
 const TYPE_TO_PREF: Record<string, string> = {
 	new_match: 'notify_new_matches',
@@ -71,7 +78,7 @@ Deno.serve(async (req) => {
 			},
 			sound: 'default',
 			priority: 'high',
-			channelId: notification.type === 'match_reminder' ? 'match_reminders' : notification.type === 'join_request' ? 'join_requests' : 'default',
+			channelId: ANDROID_CHANNEL_ID,
 		}))
 
 		// 4. Send to Expo Push API (accepts up to 100 messages per request)

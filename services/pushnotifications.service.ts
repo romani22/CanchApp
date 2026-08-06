@@ -28,6 +28,46 @@ const isExpoGo = Constants.executionEnvironment === 'storeClient'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const getNotifications = (): typeof NotificationsType => require('expo-notifications')
 
+/**
+ * Canal único de Android. Espejo de ANDROID_CHANNEL_ID en la Edge Function
+ * send-push-notification: si cambia acá, cambia allá y hay que redeployarla. Un
+ * push que llega con un channelId que no existe en el dispositivo lo descarta
+ * Android sin mostrar nada — ni sonido, ni banner, ni entrada en la barra.
+ *
+ * El sufijo de versión no es decorativo. En Android la configuración de un canal
+ * es inmutable: una vez creado, setNotificationChannelAsync sobre el mismo ID no
+ * le cambia el sonido ni la importancia, y de ahí en más sólo manda lo que haya
+ * elegido el usuario en los ajustes del sistema. La única forma de que una
+ * configuración nueva tenga efecto es publicarla con un ID nuevo. Si alguna vez
+ * hay que volver a tocar sonido o importancia: subir el número acá, agregar el ID
+ * viejo a LEGACY_ANDROID_CHANNEL_IDS y redeployar la Edge Function.
+ */
+const ANDROID_CHANNEL_ID = 'canchapp-v2'
+
+// Los tres canales por tipo de antes. Ya no se les manda nada, pero seguirían
+// apareciendo en los ajustes del sistema como entradas muertas.
+const LEGACY_ANDROID_CHANNEL_IDS = ['default', 'match_reminders', 'join_requests']
+
+const configureAndroidChannel = async (Notifications: typeof NotificationsType): Promise<void> => {
+	if (Platform.OS !== 'android') return
+
+	await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+		name: 'CanchApp',
+		// MAX es lo que hace que el aviso aparezca sobre lo que estés usando. Con
+		// HIGH suena pero no interrumpe, y con DEFAULT ni suena.
+		importance: Notifications.AndroidImportance.MAX,
+		sound: 'default',
+		vibrationPattern: [0, 250, 250, 250],
+		enableVibrate: true,
+		lightColor: '#FF231F7C',
+		lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+	})
+
+	for (const legacyId of LEGACY_ANDROID_CHANNEL_IDS) {
+		await Notifications.deleteNotificationChannelAsync(legacyId)
+	}
+}
+
 if (!isExpoGo) {
 	getNotifications().setNotificationHandler({
 		handleNotification: async () => ({
@@ -54,6 +94,12 @@ export const pushNotificationService = {
 
 			const Notifications = getNotifications()
 
+			// Antes que nada: crear el canal no necesita permiso, y si esto quedaba
+			// después de pedir el token, un fallo al pedirlo cortaba la función y
+			// dejaba al dispositivo sin canal. Con un token viejo todavía activo en
+			// la base, el push salía a un canal inexistente y Android lo tiraba.
+			await configureAndroidChannel(Notifications)
+
 			const { status: existingStatus } = await Notifications.getPermissionsAsync()
 			let finalStatus = existingStatus
 
@@ -74,30 +120,8 @@ export const pushNotificationService = {
 			}
 
 			const tokenData = await Notifications.getExpoPushTokenAsync({ projectId })
-			const token = tokenData.data
 
-			if (Platform.OS === 'android') {
-				await Notifications.setNotificationChannelAsync('default', {
-					name: 'Default',
-					importance: Notifications.AndroidImportance.MAX,
-					vibrationPattern: [0, 250, 250, 250],
-					lightColor: '#FF231F7C',
-				})
-				await Notifications.setNotificationChannelAsync('match_reminders', {
-					name: 'Recordatorios de Partido',
-					importance: Notifications.AndroidImportance.HIGH,
-					vibrationPattern: [0, 250, 250, 250],
-					sound: 'default',
-				})
-				await Notifications.setNotificationChannelAsync('join_requests', {
-					name: 'Solicitudes de Unión',
-					importance: Notifications.AndroidImportance.HIGH,
-					vibrationPattern: [0, 250, 250, 250],
-					sound: 'default',
-				})
-			}
-
-			return token
+			return tokenData.data
 		} catch (error) {
 			console.error('Error registering for push notifications:', error)
 			return null
