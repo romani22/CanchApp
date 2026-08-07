@@ -31,6 +31,13 @@ import { AppState, AppStateStatus } from 'react-native'
  * de que Android mate el proceso en background — desde el código son
  * indistinguibles, y esa confusión era justamente el origen del "se cierra sola la
  * sesión".
+ *
+ * El reloj corre SÓLO mientras hay sesión, y se borra al quedarse sin ella. Antes
+ * el timestamp sobrevivía al logout: quien volvía después de más de 30 minutos con
+ * la sesión ya vencida tenía que loguearse y, apenas entraba, la app le pedía
+ * desbloquear contra un reloj de la sesión anterior. Tipear mail y contraseña ya es
+ * una prueba de identidad más fuerte que la huella, así que un login reciente
+ * arranca siempre desbloqueado.
  */
 
 const LAST_ACTIVE_KEY = 'canchapp:last_active_at'
@@ -67,6 +74,14 @@ const writeLastActive = async () => {
 	}
 }
 
+const clearLastActive = async () => {
+	try {
+		await AsyncStorage.removeItem(LAST_ACTIVE_KEY)
+	} catch (err) {
+		console.warn('[AppLock] no se pudo borrar la última actividad:', err)
+	}
+}
+
 /** El dispositivo puede validar identidad (huella, cara o PIN/patrón). */
 const deviceCanAuthenticate = async (): Promise<boolean> => {
 	try {
@@ -79,36 +94,78 @@ const deviceCanAuthenticate = async (): Promise<boolean> => {
 }
 
 export function AppLockProvider({ children }: { children: ReactNode }) {
-	const { isAuthenticated } = useAuth()
+	const { isAuthenticated, isLoading } = useAuth()
 	const [locked, setLocked] = useState(false)
 	const appState = useRef<AppStateStatus>(AppState.currentState)
 	// Sin forma de validar identidad no se bloquea: dejaríamos al usuario con una
 	// pantalla que no puede pasar, y en un teléfono sin bloqueo tampoco hay nada
 	// que proteger.
 	const canAuthenticate = useRef(false)
+	// Espejos para el listener de AppState, que se registra una sola vez y no ve
+	// los valores nuevos de cada render.
+	const authedRef = useRef(false)
+	const lockedRef = useRef(false)
+	// El arranque en frío se evalúa una vez por sesión: sin esto, cualquier
+	// re-render con isAuthenticated en true volvería a mirar el reloj.
+	const evaluatedForSession = useRef(false)
 
 	useEffect(() => {
+		authedRef.current = isAuthenticated
+	}, [isAuthenticated])
+
+	useEffect(() => {
+		lockedRef.current = locked
+	}, [locked])
+
+	useEffect(() => {
+		// Mientras AuthContext no resolvió, "no autenticado" todavía no significa nada:
+		// actuar acá borraría el reloj de una sesión que sí se va a restaurar.
+		if (isLoading) return
+
+		// Sin sesión no hay nada que bloquear, y el reloj se descarta para que el
+		// próximo login arranque de cero.
+		if (!isAuthenticated) {
+			setLocked(false)
+			evaluatedForSession.current = false
+			void clearLastActive()
+			return
+		}
+
+		if (evaluatedForSession.current) return
+		evaluatedForSession.current = true
+
 		let cancelled = false
 
-		const bootstrap = async () => {
+		void (async () => {
 			const [available, lastActive] = await Promise.all([deviceCanAuthenticate(), readLastActive()])
 			if (cancelled) return
 
 			canAuthenticate.current = available
 
-			// Arranque en frío: si la última actividad quedó vieja, se pide autenticación.
+			// Arranque en frío con sesión restaurada: si la última actividad quedó vieja,
+			// se pide autenticación. Tras un login recién hecho no hay timestamp (lo borró
+			// la rama de arriba), así que se entra derecho.
 			if (available && lastActive !== null && now() - lastActive > INACTIVITY_LIMIT_MS) {
 				setLocked(true)
 			} else {
 				await writeLastActive()
 			}
+		})()
+
+		return () => {
+			cancelled = true
 		}
+	}, [isLoading, isAuthenticated])
 
-		void bootstrap()
-
+	useEffect(() => {
 		const subscription = AppState.addEventListener('change', (next) => {
 			const previous = appState.current
 			appState.current = next
+
+			// El reloj sólo corre con sesión abierta. Si además ya está bloqueada, no hay
+			// nada que medir: el estado no puede empeorar y tocar el timestamp mientras
+			// tanto sólo confunde.
+			if (!authedRef.current || lockedRef.current) return
 
 			// 'inactive' en iOS es transitorio (centro de notificaciones, llamada
 			// entrante): se marca la salida igual, y si vuelve enseguida no alcanza el
@@ -131,15 +188,9 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
 		})
 
 		return () => {
-			cancelled = true
 			subscription.remove()
 		}
 	}, [])
-
-	// Al cerrar sesión no queda nada que bloquear.
-	useEffect(() => {
-		if (!isAuthenticated) setLocked(false)
-	}, [isAuthenticated])
 
 	const unlock = useCallback(async (): Promise<boolean> => {
 		try {

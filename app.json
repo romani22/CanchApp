@@ -5,12 +5,12 @@
 		"owner": "shamanking22",
 		"version": "1.0.0",
 		"orientation": "portrait",
-		"icon": "./assets/images/Logo/1024.png",
+		"icon": "./assets/images/Logo/1024-2.png",
 		"scheme": "canchapp",
 		"userInterfaceStyle": "automatic",
 		"newArchEnabled": true,
 		"ios": {
-			"icon": "./assets/images/Logo/appstore.png",
+			"icon": "./assets/images/Logo/1024-2.png",
 			"bundleIdentifier": "com.romani22.canchapp",
 			"supportsTablet": true,
 			"infoPlist": {
@@ -24,8 +24,8 @@
 		"android": {
 			"package": "com.romani22.canchapp",
 			"adaptiveIcon": {
-				"foregroundImage": "./assets/images/Logo/playstore.png",
-				"backgroundColor": "#ffffff"
+				"foregroundImage": "./assets/images/Logo/1024-2.png",
+				"backgroundColor": "#0F0F0F"
 			},
 			"googleServicesFile": "./google-services.json",
 			"edgeToEdgeEnabled": true,
@@ -34,7 +34,7 @@
 		},
 		"web": {
 			"output": "static",
-			"favicon": "./assets/images/Logo/1024.png"
+			"favicon": "./assets/images/Logo/1024-2.png"
 		},
 		"plugins": [
 			"expo-router",
@@ -44,9 +44,9 @@
 					"image": "./assets/images/Logo/1024.png",
 					"imageWidth": 200,
 					"resizeMode": "contain",
-					"backgroundColor": "#ffffff",
+					"backgroundColor": "#0F0F0F",
 					"dark": {
-						"backgroundColor": "#000000"
+						"backgroundColor": "#0F0F0F"
 					}
 				}
 			],
@@ -54,8 +54,8 @@
 			[
 				"expo-notifications",
 				{
-					"icon": "./assets/images/Logo/1024.png",
-					"color": "#ffffff",
+					"icon": "./assets/images/Logo/notification-icon.png",
+					"color": "#30e87a",
 					"androidMode": "default",
 					"androidCollapsedTitle": "#{unread_notifications} notificaciones",
 					"iosDisplayInForeground": true
