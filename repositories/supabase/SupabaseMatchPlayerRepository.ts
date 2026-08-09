@@ -1,3 +1,4 @@
+import { uniqueTopic } from './realtimeTopic'
 import { supabase } from '@/lib/supabase'
 import type { MatchPlayer, MatchPlayerWithUser, Profile, TeamSlot } from '@/types/database.types'
 import type { AddMultiplePlayersResult, AddPlayerInput, IMatchPlayerRepository } from '../interfaces/IMatchPlayerRepository'
@@ -124,7 +125,7 @@ export class SupabaseMatchPlayerRepository implements IMatchPlayerRepository {
 
 	subscribe(matchId: string, callback: (payload: unknown) => void): SubscriptionHandle {
 		const channel = supabase
-			.channel(`match_players:${matchId}`)
+			.channel(uniqueTopic(`match_players:${matchId}`))
 			.on('postgres_changes', { event: '*', schema: 'public', table: 'match_players', filter: `match_id=eq.${matchId}` }, callback)
 			.subscribe()
 

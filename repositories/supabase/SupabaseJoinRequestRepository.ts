@@ -1,3 +1,4 @@
+import { uniqueTopic } from './realtimeTopic'
 import { supabase } from '@/lib/supabase'
 import type { JoinRequest, JoinRequestWithUser, TeamSlot } from '@/types/database.types'
 import type { IJoinRequestRepository } from '../interfaces/IJoinRequestRepository'
@@ -103,7 +104,7 @@ export class SupabaseJoinRequestRepository implements IJoinRequestRepository {
 
 	subscribe(matchId: string, callback: (payload: { eventType: string; request: JoinRequest }) => void): SubscriptionHandle {
 		const channel = supabase
-			.channel(`requests:${matchId}`)
+			.channel(uniqueTopic(`requests:${matchId}`))
 			.on('postgres_changes', { event: '*', schema: 'public', table: 'join_requests', filter: `match_id=eq.${matchId}` }, (payload) => {
 				callback({ eventType: payload.eventType, request: (payload.new || payload.old) as JoinRequest })
 			})

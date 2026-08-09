@@ -135,7 +135,10 @@ describe('NotificationsContext', () => {
         await new Promise((r) => setTimeout(r, 0))
       })
 
-      expect(mockChannelFn).toHaveBeenCalledWith(`notifications-${user.id}`)
+      // Antes este canal se llamaba `notifications-<id>` con guion, para no chocar
+      // con el `notifications:<id>` de la otra suscripción. Ese truco ya no hace
+      // falta: uniqueTopic() le da un sufijo propio a cada una (ver realtimeTopic.ts).
+      expect(mockChannelFn).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^notifications:${user.id}:\\d+$`)))
     })
 
     it('suscribe a cambios INSERT y UPDATE en notifications', async () => {

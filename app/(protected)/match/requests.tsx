@@ -7,8 +7,19 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Stack, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
+/**
+ * Esta pantalla estaba escrita con `className` de NativeWind, que nunca funcionó:
+ * el proyecto no tiene metro.config.js con withNativeWind() ni el preset de babel,
+ * así que las clases se ignoraban y todo salía sin estilo, apilado y en blanco.
+ *
+ * Se pasó a StyleSheet en vez de configurar NativeWind por dos motivos. Era el
+ * único archivo vivo que usaba className — los otros seis pertenecen al sistema
+ * muerto de match_players o son componentes que no importa nadie. Y sus clases eran
+ * de tema claro (bg-white, text-gray-900) dentro de una app oscura: activando
+ * NativeWind habría quedado blanca sobre blanca, mal de otra forma.
+ */
 export default function MatchRequestsScreen() {
 	const { id } = useLocalSearchParams()
 	const [requests, setRequests] = useState<JoinRequestWithUser[]>([])
@@ -93,10 +104,23 @@ export default function MatchRequestsScreen() {
 		loadRequests()
 	}
 
+	const header = (
+		<Stack.Screen
+			options={{
+				headerShown: true,
+				title: 'Solicitudes',
+				headerBackTitle: 'Atrás',
+				headerStyle: { backgroundColor: colors.surfaceDark },
+				headerTintColor: colors.textPrimaryDark,
+			}}
+		/>
+	)
+
 	if (loading) {
 		return (
-			<View className='flex-1 bg-white items-center justify-center'>
-				<ActivityIndicator size='large' color='#3B82F6' />
+			<View style={styles.centered}>
+				{header}
+				<ActivityIndicator size='large' color={colors.primary} />
 			</View>
 		)
 	}
@@ -106,34 +130,31 @@ export default function MatchRequestsScreen() {
 			{/* headerShown explícito: el Stack de (protected) los oculta a todos, así
 			    que sin esto la pantalla quedaba sin botón de volver. Antes nadie
 			    navegaba acá, ahora el detalle del partido sí. */}
-			<Stack.Screen
-				options={{
-					headerShown: true,
-					title: 'Solicitudes',
-					headerBackTitle: 'Atrás',
-					headerStyle: { backgroundColor: colors.surfaceDark },
-					headerTintColor: colors.textPrimaryDark,
-				}}
-			/>
+			{header}
 
-			<ScrollView className='flex-1 bg-gray-50' refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+			<ScrollView style={styles.screen} contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}>
 				{requests.length === 0 ? (
-					<View className='flex-1 items-center justify-center py-20'>
-						<Ionicons name='people-outline' size={64} color='#D1D5DB' />
-						<Text className='text-gray-400 text-lg mt-4'>No hay solicitudes pendientes</Text>
-						<Text className='text-gray-400 text-sm mt-2'>Aquí aparecerán cuando alguien quiera unirse</Text>
+					<View style={styles.empty}>
+						<Ionicons name='people-outline' size={64} color={colors.textSecondaryDark} />
+						<Text style={styles.emptyTitle}>No hay solicitudes pendientes</Text>
+						<Text style={styles.emptySubtitle}>Aquí aparecerán cuando alguien quiera unirse</Text>
 					</View>
 				) : (
-					<View className='p-4'>
-						<View className='bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex-row items-center'>
-							<Ionicons name='information-circle' size={20} color='#3B82F6' />
-							<Text className='text-blue-700 text-sm ml-2 flex-1'>Tienes {requests.length} solicitud(es) pendiente(s)</Text>
+					<>
+						<View style={styles.summary}>
+							<Ionicons name='information-circle' size={20} color={colors.primary} />
+							<Text style={styles.summaryText}>
+								{requests.length === 1 ? 'Tenés 1 solicitud pendiente' : `Tenés ${requests.length} solicitudes pendientes`}
+							</Text>
 						</View>
 
-						{requests.map((request) => (
-							<RequestCard key={request.id} request={request} onAccept={() => handleAccept(request.id, request.user.full_name)} onReject={() => handleReject(request.id, request.user.full_name)} isProcessing={processingId === request.id} />
-						))}
-					</View>
+						{requests.map((request) => {
+							// Mismo motivo que en RequestCard: full_name puede venir null y acá
+							// además se interpola en el texto del Alert.
+							const nombre = request.user?.full_name?.trim() || 'Jugador'
+							return <RequestCard key={request.id} request={request} onAccept={() => handleAccept(request.id, nombre)} onReject={() => handleReject(request.id, nombre)} isProcessing={processingId === request.id} />
+						})}
+					</>
 				)}
 			</ScrollView>
 		</>
@@ -148,97 +169,291 @@ interface RequestCardProps {
 }
 
 function RequestCard({ request, onAccept, onReject, isProcessing }: RequestCardProps) {
+	// El tipo declara `user: Profile` con `rating: number`, pero eso describe el
+	// esquema ideal, no lo que llega. En la base rating, full_name y total_matches
+	// son nulables, y el embed `match:matches(*)` devuelve null si RLS oculta la
+	// fila. Cualquiera de esos nulls hacía explotar el render — y un error de render
+	// en release no muestra pantalla roja: se lleva la app entera.
+	const user = request.user
+	const nombre = user?.full_name?.trim() || 'Jugador'
+	const inicial = nombre.charAt(0).toUpperCase()
+	const rating = typeof user?.rating === 'number' ? user.rating : null
+	const partidos = user?.total_matches ?? 0
+	const deporte = request.match?.sport
+	const nivel = deporte ? levelForSport(user?.sport_levels, deporte) : null
+	const equipo = request.team_slot ? TEAM_CONFIG[request.team_slot] : null
+
 	return (
-		<View className='bg-white rounded-lg shadow-sm mb-3 overflow-hidden'>
-			{/* Header del usuario */}
-			<View className='p-4 border-b border-gray-100'>
-				<View className='flex-row items-center'>
-					{request.user.avatar_url ? (
-						<Image source={{ uri: request.user.avatar_url }} className='w-14 h-14 rounded-full' />
-					) : (
-						<View className='w-14 h-14 rounded-full bg-blue-100 items-center justify-center'>
-							<Text className='text-blue-600 font-bold text-xl'>{request.user.full_name.charAt(0).toUpperCase()}</Text>
+		<View style={styles.card}>
+			<View style={styles.cardHeader}>
+				{user?.avatar_url ? (
+					<Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+				) : (
+					<View style={[styles.avatar, styles.avatarFallback]}>
+						<Text style={styles.avatarInitial}>{inicial}</Text>
+					</View>
+				)}
+
+				<View style={styles.identity}>
+					<Text style={styles.name} numberOfLines={1}>
+						{nombre}
+					</Text>
+					<View style={styles.metaRow}>
+						{/* Sin calificaciones todavía no se muestra la estrella: un "0.0" se
+						    lee como mala reputación, y es lo contrario — es que nadie lo
+						    calificó aún. */}
+						{rating !== null && (
+							<>
+								<Ionicons name='star' size={13} color={colors.warning} />
+								<Text style={styles.metaStrong}>{rating.toFixed(1)}</Text>
+							</>
+						)}
+						<Text style={styles.meta}>
+							{partidos} {partidos === 1 ? 'partido' : 'partidos'}
+						</Text>
+					</View>
+				</View>
+
+				<View style={styles.badges}>
+					{/* Nivel en el deporte del partido al que se está postulando. */}
+					{nivel && (
+						<View style={styles.badge}>
+							<Text style={styles.badgeText}>{levelLabels[nivel]}</Text>
 						</View>
 					)}
 
-					<View className='ml-3 flex-1'>
-						<Text className='text-gray-900 font-semibold text-base'>{request.user.full_name}</Text>
-						<View className='flex-row items-center mt-1'>
-							<Ionicons name='star' size={14} color='#F59E0B' />
-							<Text className='text-gray-600 text-sm ml-1'>{request.user.rating.toFixed(1)}</Text>
-							<Text className='text-gray-400 text-sm ml-2'>
-								{request.user.total_matches} {request.user.total_matches === 1 ? 'partido' : 'partidos'}
-							</Text>
+					{/* Equipo que pidió: si se acepta, entra en ese equipo (022). */}
+					{equipo && (
+						<View style={[styles.badge, { backgroundColor: equipo.bg, borderColor: equipo.border }]}>
+							<Text style={[styles.badgeText, { color: equipo.color }]}>{equipo.label}</Text>
 						</View>
-					</View>
-
-					<View className='items-end'>
-						{/* Nivel en el deporte del partido al que se está postulando. */}
-						{(() => {
-							const nivel = levelForSport(request.user.sport_levels, request.match.sport)
-							if (!nivel) return null
-							return (
-								<View className='bg-gray-100 px-3 py-1 rounded-full'>
-									<Text className='text-gray-600 text-xs font-medium'>{levelLabels[nivel]}</Text>
-								</View>
-							)
-						})()}
-
-						{/* Equipo que pidió: si se acepta, entra en ese equipo (022). */}
-						{request.team_slot && (
-							<View className='bg-blue-50 px-3 py-1 rounded-full mt-1'>
-								<Text className='text-blue-600 text-xs font-medium'>{TEAM_CONFIG[request.team_slot].label}</Text>
-							</View>
-						)}
-					</View>
+					)}
 				</View>
 			</View>
 
-			{/* Mensaje (si hay) */}
 			{request.message && (
-				<View className='px-4 py-3 bg-gray-50'>
-					<View className='flex-row items-start'>
-						<Ionicons name='chatbubble-outline' size={16} color='#6B7280' />
-						<Text className='text-gray-700 text-sm ml-2 flex-1 italic'>{request.message}</Text>
-					</View>
+				<View style={styles.message}>
+					<Ionicons name='chatbubble-outline' size={15} color={colors.textSecondaryDark} />
+					<Text style={styles.messageText}>{request.message}</Text>
 				</View>
 			)}
 
-			{/* Info adicional */}
-			<View className='px-4 py-3 border-t border-gray-100'>
-				<View className='flex-row items-center'>
-					<Ionicons name='time-outline' size={16} color='#9CA3AF' />
-					<Text className='text-gray-500 text-xs ml-1'>Solicitó hace {format(new Date(request.created_at), "d 'de' MMMM 'a las' HH:mm", { locale: es })}</Text>
+			<View style={styles.info}>
+				<View style={styles.infoRow}>
+					<Ionicons name='time-outline' size={15} color={colors.textSecondaryDark} />
+					<Text style={styles.infoText}>Solicitó el {format(new Date(request.created_at), "d 'de' MMMM 'a las' HH:mm", { locale: es })}</Text>
 				</View>
 
-				{request.user.zone && (
-					<View className='flex-row items-center mt-1'>
-						<Ionicons name='location-outline' size={16} color='#9CA3AF' />
-						<Text className='text-gray-500 text-xs ml-1'>{request.user.zone}</Text>
+				{user?.zone && (
+					<View style={styles.infoRow}>
+						<Ionicons name='location-outline' size={15} color={colors.textSecondaryDark} />
+						<Text style={styles.infoText}>{user.zone}</Text>
 					</View>
 				)}
 			</View>
 
-			{/* Botones de acción */}
-			<View className='flex-row p-3 bg-gray-50 space-x-3'>
-				<TouchableOpacity className={`flex-1 py-3 rounded-lg border ${isProcessing ? 'bg-gray-200 border-gray-300' : 'bg-white border-red-300'}`} onPress={onReject} disabled={isProcessing}>
-					<View className='flex-row items-center justify-center'>
-						<Ionicons name='close-circle' size={20} color={isProcessing ? '#9CA3AF' : '#EF4444'} />
-						<Text className={`ml-2 font-semibold ${isProcessing ? 'text-gray-400' : 'text-red-600'}`}>Rechazar</Text>
-					</View>
+			<View style={styles.actions}>
+				<TouchableOpacity style={[styles.actionButton, styles.rejectButton, isProcessing && styles.actionDisabled]} onPress={onReject} disabled={isProcessing}>
+					<Ionicons name='close-circle' size={19} color={isProcessing ? colors.textSecondaryDark : colors.error} />
+					<Text style={[styles.actionText, { color: isProcessing ? colors.textSecondaryDark : colors.error }]}>Rechazar</Text>
 				</TouchableOpacity>
 
-				<TouchableOpacity className={`flex-1 py-3 rounded-lg ${isProcessing ? 'bg-gray-400' : 'bg-blue-600'}`} onPress={onAccept} disabled={isProcessing}>
+				<TouchableOpacity style={[styles.actionButton, styles.acceptButton, isProcessing && styles.actionDisabled]} onPress={onAccept} disabled={isProcessing}>
 					{isProcessing ? (
-						<ActivityIndicator color='white' />
+						<ActivityIndicator color={colors.primaryForeground} size='small' />
 					) : (
-						<View className='flex-row items-center justify-center'>
-							<Ionicons name='checkmark-circle' size={20} color='white' />
-							<Text className='text-white ml-2 font-semibold'>Aceptar</Text>
-						</View>
+						<>
+							<Ionicons name='checkmark-circle' size={19} color={colors.primaryForeground} />
+							<Text style={[styles.actionText, { color: colors.primaryForeground }]}>Aceptar</Text>
+						</>
 					)}
 				</TouchableOpacity>
 			</View>
 		</View>
 	)
 }
+
+const styles = StyleSheet.create({
+	screen: {
+		flex: 1,
+		backgroundColor: colors.backgroundDark,
+	},
+	centered: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		backgroundColor: colors.backgroundDark,
+	},
+	scrollContent: {
+		padding: 16,
+		paddingBottom: 32,
+	},
+	empty: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 80,
+		gap: 6,
+	},
+	emptyTitle: {
+		color: colors.textPrimaryDark,
+		fontSize: 17,
+		fontWeight: '600',
+		marginTop: 10,
+	},
+	emptySubtitle: {
+		color: colors.textSecondaryDark,
+		fontSize: 14,
+		textAlign: 'center',
+	},
+	summary: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		backgroundColor: `${colors.primary}15`,
+		borderWidth: 1,
+		borderColor: `${colors.primary}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		marginBottom: 14,
+	},
+	summaryText: {
+		color: colors.primary,
+		fontSize: 14,
+		fontWeight: '600',
+		flex: 1,
+	},
+	card: {
+		backgroundColor: colors.surfaceDark,
+		borderRadius: 16,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+		marginBottom: 14,
+		overflow: 'hidden',
+	},
+	cardHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		padding: 14,
+		gap: 12,
+	},
+	avatar: {
+		width: 52,
+		height: 52,
+		borderRadius: 26,
+	},
+	avatarFallback: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		backgroundColor: `${colors.primary}20`,
+	},
+	avatarInitial: {
+		color: colors.primary,
+		fontSize: 20,
+		fontWeight: '700',
+	},
+	identity: {
+		flex: 1,
+		gap: 3,
+	},
+	name: {
+		color: colors.textPrimaryDark,
+		fontSize: 16,
+		fontWeight: '600',
+	},
+	metaRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+	},
+	metaStrong: {
+		color: colors.textPrimaryDark,
+		fontSize: 13,
+		marginRight: 4,
+	},
+	meta: {
+		color: colors.textSecondaryDark,
+		fontSize: 13,
+	},
+	badges: {
+		alignItems: 'flex-end',
+		gap: 5,
+	},
+	badge: {
+		backgroundColor: colors.surfaceElevated,
+		borderWidth: 1,
+		borderColor: colors.borderDark,
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+		borderRadius: 999,
+	},
+	badgeText: {
+		color: colors.textSecondaryDark,
+		fontSize: 11,
+		fontWeight: '600',
+	},
+	message: {
+		flexDirection: 'row',
+		alignItems: 'flex-start',
+		gap: 8,
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		backgroundColor: colors.surfaceElevated,
+	},
+	messageText: {
+		color: colors.textPrimaryDark,
+		fontSize: 13,
+		fontStyle: 'italic',
+		flex: 1,
+		lineHeight: 18,
+	},
+	info: {
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderDark,
+		gap: 5,
+	},
+	infoRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 6,
+	},
+	infoText: {
+		color: colors.textSecondaryDark,
+		fontSize: 12,
+		flex: 1,
+	},
+	actions: {
+		flexDirection: 'row',
+		gap: 10,
+		padding: 12,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderDark,
+	},
+	actionButton: {
+		flex: 1,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 6,
+		paddingVertical: 13,
+		borderRadius: 12,
+		borderWidth: 1,
+	},
+	rejectButton: {
+		backgroundColor: `${colors.error}15`,
+		borderColor: `${colors.error}50`,
+	},
+	acceptButton: {
+		backgroundColor: colors.primary,
+		borderColor: colors.primary,
+	},
+	actionDisabled: {
+		opacity: 0.5,
+	},
+	actionText: {
+		fontSize: 15,
+		fontWeight: '700',
+	},
+})

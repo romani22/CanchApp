@@ -36,6 +36,9 @@ export default function MatchDetail() {
 	const [voting, setVoting] = useState(false)
 	// Modal para elegir equipo al unirse
 	const [teamPickerVisible, setTeamPickerVisible] = useState(false)
+	// Alto real del pie fijo, para que el scroll reserve exactamente eso (ver el
+	// comentario del ScrollView).
+	const [footerHeight, setFooterHeight] = useState(0)
 
 	const loadMatch = useCallback(async () => {
 		try {
@@ -289,7 +292,14 @@ export default function MatchDetail() {
 
 	return (
 		<View style={styles.container}>
-			<ScrollView bounces={false} contentContainerStyle={styles.scrollContent}>
+			{/* El pie es absoluto, así que tapa el final del scroll. styles.scrollContent
+			    reserva 120px fijos, que alcanzan para un botón pero no para los dos del
+			    creador (editar + cancelar): el banner de solicitudes quedaba debajo del
+			    pie, medio tapado. No se puede subir el 120 en el estilo compartido porque
+			    lo usan otras diez pantallas, y tampoco sirve un número más grande acá: la
+			    altura del pie cambia según quién mira y en qué estado está el partido. Se
+			    mide y listo. */}
+			<ScrollView bounces={false} contentContainerStyle={[styles.scrollContent, footerHeight > 0 && { paddingBottom: footerHeight + 24 }]}>
 				{/* Imagen de portada */}
 				<ImageBackground source={getSportImage(match.sport)} style={styles.headerImage}>
 					<SafeAreaView style={styles.headerButtons}>
@@ -407,7 +417,7 @@ export default function MatchDetail() {
 			</ScrollView>
 
 			{/* Footer */}
-			<View style={styles.footer}>
+			<View style={styles.footer} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
 				{isCancelled ? (
 					<View style={localStyles.cancelledFooter}>
 						<Ionicons name='close-circle-outline' size={20} color={colors.textSecondaryDark} />

@@ -314,7 +314,9 @@ describe('notificationsService', () => {
       const callback = jest.fn()
       notificationsService.subscribe('user-1', callback)
 
-      expect(mockChannel).toHaveBeenCalledWith('notifications:user-1')
+      // Prefijo, no cadena exacta: uniqueTopic() agrega un sufijo por suscripción
+      // para que dos pantallas no compartan canal (ver realtimeTopic.ts).
+      expect(mockChannel).toHaveBeenCalledWith(expect.stringMatching(/^notifications:user-1:\d+$/))
     })
   })
 })

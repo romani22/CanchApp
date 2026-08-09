@@ -296,7 +296,10 @@ describe('matchPlayersService', () => {
 
       matchPlayersService.subscribe('match-1', jest.fn())
 
-      expect(mockChannel).toHaveBeenCalledWith('match_players:match-1')
+      // El sufijo numérico lo agrega uniqueTopic() y no es incidental: es lo que
+      // evita que dos pantallas vivas compartan canal (ver realtimeTopic.ts). Por
+      // eso se afirma el prefijo, no la cadena exacta.
+      expect(mockChannel).toHaveBeenCalledWith(expect.stringMatching(/^match_players:match-1:\d+$/))
     })
   })
 })

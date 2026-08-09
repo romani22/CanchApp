@@ -1,3 +1,4 @@
+import { uniqueTopic } from './realtimeTopic'
 import { supabase } from '@/lib/supabase'
 import type { Notification, NotificationType, NotificationWithData } from '@/types/database.types'
 import type { INotificationRepository, NotificationSettings } from '../interfaces/INotificationRepository'
@@ -101,7 +102,7 @@ export class SupabaseNotificationRepository implements INotificationRepository {
 
 	subscribe(userId: string, callback: (payload: unknown) => void): SubscriptionHandle {
 		const channel = supabase
-			.channel(`notifications:${userId}`)
+			.channel(uniqueTopic(`notifications:${userId}`))
 			.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, callback)
 			.subscribe()
 
@@ -110,7 +111,7 @@ export class SupabaseNotificationRepository implements INotificationRepository {
 
 	subscribeToChanges(userId: string, onInsert: (payload: unknown) => void, onUpdate: (payload: unknown) => void): SubscriptionHandle {
 		const channel = supabase
-			.channel(`notifications-${userId}`)
+			.channel(uniqueTopic(`notifications:${userId}`))
 			.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, onInsert)
 			.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, onUpdate)
 			.subscribe()
