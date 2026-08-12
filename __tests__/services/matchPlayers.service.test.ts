@@ -8,6 +8,11 @@ function makeBuilder(result: { data?: unknown; error?: unknown } = {}) {
   } = {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
+    neq: jest.fn().mockReturnThis(),
+    ilike: jest.fn().mockReturnThis(),
+    // `or` sigue en el mock a propósito, aunque el código ya no lo use: los tests de
+    // searchUsers verifican que NO se llame. Sin el mock, "no se llamó" sería
+    // indistinguible de "explotó porque no existe".
     or: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
@@ -195,16 +200,53 @@ describe('matchPlayersService', () => {
       expect(result).toEqual(users)
     })
 
-    it('escapa caracteres especiales en la búsqueda', async () => {
+    it('escapa los comodines de LIKE', async () => {
       const builder = makeBuilder({ data: [] })
       mockFrom.mockReturnValue(builder)
 
       await matchPlayersService.searchUsers('test%_test')
 
-      // El query debe escapar % y _ con backslash
-      const orCall = builder.or.mock.calls[0][0] as string
-      expect(orCall).toContain('\\%')
-      expect(orCall).toContain('\\_')
+      const [columna, patron] = builder.ilike.mock.calls[0] as [string, string]
+      expect(columna).toBe('full_name')
+      expect(patron).toContain('\\%')
+      expect(patron).toContain('\\_')
+    })
+
+    it('no arma el filtro con .or(): una coma no puede inyectar condiciones', async () => {
+      const builder = makeBuilder({ data: [] })
+      mockFrom.mockReturnValue(builder)
+
+      // Con el .or() interpolado que había antes, esto se convertía en una condición
+      // extra sobre una columna que ni está en el select, y servía para enumerar
+      // teléfonos, mails y zonas de toda la base.
+      await matchPlayersService.searchUsers('a,phone.not.is.null')
+
+      expect(builder.or).not.toHaveBeenCalled()
+
+      // La coma viaja como parte del valor, no como separador: es un parámetro.
+      const [columna, patron] = builder.ilike.mock.calls[0] as [string, string]
+      expect(columna).toBe('full_name')
+      expect(patron).toBe('%a,phone.not.is.null%')
+    })
+
+    it('busca por mail exacto cuando el texto ya es un mail completo', async () => {
+      const builder = makeBuilder({ data: [] })
+      mockFrom.mockReturnValue(builder)
+
+      await matchPlayersService.searchUsers('ana@test.com')
+
+      // Sin comodines: ilike sin % es una comparación exacta insensible a mayúsculas.
+      // Buscar mails por subcadena convertía el buscador en un cosechador.
+      expect(builder.ilike).toHaveBeenCalledWith('email', 'ana@test.com')
+    })
+
+    it('un texto con arroba pero incompleto busca por nombre, no por mail', async () => {
+      const builder = makeBuilder({ data: [] })
+      mockFrom.mockReturnValue(builder)
+
+      await matchPlayersService.searchUsers('@gmail')
+
+      expect(builder.ilike).toHaveBeenCalledWith('full_name', '%@gmail%')
     })
 
     it('respeta el límite máximo de 10', async () => {

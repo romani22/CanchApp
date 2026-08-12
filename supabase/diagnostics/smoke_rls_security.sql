@@ -439,7 +439,13 @@ $$
     END
 $$;
 
--- Pero las nueve del cliente sí tienen que estar abiertas.
+-- Pero las del cliente sí tienen que estar abiertas.
+--
+-- Eran nueve hasta la 025. La 026 borró add_multiple_players y remove_match_player
+-- (feature muerta, sin chequeo de autorización), así que quedan siete. Y ojo con
+-- volver a agregarlas a esta lista sin que existan: has_function_privilege() sobre
+-- una función inexistente no devuelve false, corta con "function does not exist" y
+-- el smoke test entero muere ahí. El bloque 9b es el que verifica que sigan borradas.
 DO
 $$
     DECLARE
@@ -448,8 +454,6 @@ $$
         SELECT string_agg(f.nombre, ', ') INTO cerradas
         FROM (VALUES ('accept_join_request(uuid)'),
                      ('reject_join_request(uuid)'),
-                     ('add_multiple_players(uuid,uuid,jsonb)'),
-                     ('remove_match_player(uuid)'),
                      ('save_match_result(uuid,integer,integer,jsonb,text,jsonb)'),
                      ('delete_match_result(uuid)'),
                      ('vote_match_result(uuid,text,text)'),
@@ -461,7 +465,7 @@ $$
         IF cerradas IS NOT NULL THEN
             RAISE EXCEPTION 'ROTO: la app no puede llamar a %', cerradas;
         END IF;
-        RAISE NOTICE 'OK 6c — las 9 RPC del cliente siguen abiertas';
+        RAISE NOTICE 'OK 6c — las 7 RPC del cliente siguen abiertas';
     END
 $$;
 
@@ -571,6 +575,294 @@ $$
             RAISE EXCEPTION 'Tablas sin RLS (legibles con la anon key): %', sin_rls;
         END IF;
         RAISE NOTICE 'OK 7 — todas las tablas de public tienen RLS';
+    END
+$$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 8. profiles.elo_rating es derivada (migración 026)
+-- ══════════════════════════════════════════════════════════════════════════
+-- El trigger de la 025 enumera lo PROHIBIDO y deja pasar el resto, así que un campo
+-- calculado que se olvide de la lista queda editable por el usuario. elo_rating fue
+-- justamente ese caso: un PATCH a la fila propia con {"elo_rating": 99999} y el
+-- ranking era suyo.
+--
+-- Las dos mitades se prueban en el MISMO update, que es la forma de que no se pueda
+-- aprobar una a costa de la otra: el campo derivado no cambia y el editable sí.
+DO
+$$
+    DECLARE
+        elo_final    INTEGER;
+        nombre_final TEXT;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+        UPDATE profiles
+        SET elo_rating = 99999,
+            full_name  = 'Ana Editada'
+        WHERE id = '11111111-1111-1111-1111-111111111111';
+        RESET ROLE;
+
+        SELECT elo_rating, full_name
+        INTO elo_final, nombre_final
+        FROM profiles
+        WHERE id = '11111111-1111-1111-1111-111111111111';
+
+        IF elo_final = 99999 THEN
+            RAISE EXCEPTION 'FUGA: Ana se puso el elo_rating en 99999';
+        END IF;
+
+        IF nombre_final <> 'Ana Editada' THEN
+            RAISE EXCEPTION 'ROTO: el trigger también bloqueó full_name, que sí es editable (quedó "%")', nombre_final;
+        END IF;
+
+        RAISE NOTICE 'OK 8 — elo_rating es de sólo lectura y el resto del perfil sigue editable';
+    END
+$$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 9. match_players: cerrada (migración 026)
+-- ══════════════════════════════════════════════════════════════════════════
+-- La policy vieja sólo pedía auth.uid() = added_by_user_id, sin decir nada del
+-- match_id: cualquiera llenaba el partido de otro hasta total_players (y así impedía
+-- que entrara nadie más), o disparaba el trigger notify_user_on_player_added contra
+-- la víctima que quisiera con un texto de push a gusto.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        BEGIN
+            INSERT INTO match_players (match_id, added_by_user_id, player_name)
+            VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    '22222222-2222-2222-2222-222222222222', 'Colado');
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA: Beto agregó un jugador al partido de Ana';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 9 — match_players no acepta escrituras del cliente';
+        END;
+    END
+$$;
+
+-- Y las dos funciones SECURITY DEFINER que no miraban auth.uid() ya no existen. Si
+-- la 027 rehace la feature, tiene que crear funciones nuevas con sus chequeos, no
+-- revivir estas.
+DO
+$$
+    DECLARE
+        vivas TEXT;
+    BEGIN
+        SELECT string_agg(p.oid::REGPROCEDURE::TEXT, ', ') INTO vivas
+        FROM pg_proc p
+                 JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname IN ('add_multiple_players', 'remove_match_player');
+
+        IF vivas IS NOT NULL THEN
+            RAISE EXCEPTION 'FUGA: siguen existiendo las RPC sin autorización: %', vivas;
+        END IF;
+        RAISE NOTICE 'OK 9b — add_multiple_players y remove_match_player ya no existen';
+    END
+$$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 10. Los resultados sólo se escriben por la RPC (migración 026)
+-- ══════════════════════════════════════════════════════════════════════════
+-- La policy de la 021 era FOR ALL con "sos el creador del partido", así que el
+-- creador escribía directo y se salteaba todo lo que valida save_match_result: que
+-- el partido haya empezado, que cada jugador de las stats haya jugado, el borrado de
+-- los votos al corregir, el ELO una sola vez. Ana ES la creadora: antes esto pasaba.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        BEGIN
+            INSERT INTO match_results (match_id, score_a, score_b, reported_by)
+            VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 9, 0,
+                    '11111111-1111-1111-1111-111111111111');
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA: la creadora escribió el resultado sin pasar por save_match_result';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 10 — match_results no acepta escrituras directas';
+        END;
+    END
+$$;
+
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        BEGIN
+            INSERT INTO match_player_stats (match_id, user_id, display_name, outcome)
+            VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    '22222222-2222-2222-2222-222222222222', 'Beto', 'loss');
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA: la creadora le escribió una derrota a Beto a mano';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 10b — match_player_stats no acepta escrituras directas';
+        END;
+    END
+$$;
+
+-- Pero la lectura tiene que seguir andando: las dos tablas alimentan la pantalla de
+-- resultado y las estadísticas del perfil.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        PERFORM COUNT(*) FROM match_results;
+        PERFORM COUNT(*) FROM match_player_stats;
+        RESET ROLE;
+        RAISE NOTICE 'OK 10c — los resultados siguen siendo legibles';
+    END
+$$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 11. join_requests: la policy de UPDATE apunta a quien corresponde (026)
+-- ══════════════════════════════════════════════════════════════════════════
+-- Usa la solicitud que creó el bloque 2c (Beto sobre el partido de Ana). Se la deja
+-- rechazada, igual que si el creador la hubiera rechazado, para probar el re-pedido.
+--
+-- Esto ANTES fallaba en silencio: la única policy de UPDATE era la del creador, así
+-- que el update del propio usuario afectaba 0 filas y .maybeSingle() devolvía null
+-- sin error. Volver a pedir entrar después de un rechazo no funcionaba, aunque la
+-- 022 le hubiera puesto un trigger para notificarlo.
+DO
+$$
+    DECLARE
+        afectadas INTEGER;
+    BEGIN
+        UPDATE join_requests
+        SET status = 'rejected'
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '22222222-2222-2222-2222-222222222222';
+
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        UPDATE join_requests
+        SET status     = 'pending',
+            updated_at = NOW()
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '22222222-2222-2222-2222-222222222222';
+        GET DIAGNOSTICS afectadas = ROW_COUNT;
+        RESET ROLE;
+
+        IF afectadas <> 1 THEN
+            RAISE EXCEPTION 'ROTO: Beto no puede volver a pedir entrar (filas afectadas=%)', afectadas;
+        END IF;
+        RAISE NOTICE 'OK 11 — volver a pedir entrar después de un rechazo funciona';
+    END
+$$;
+
+-- Pero no puede auto-aceptarse: el WITH CHECK exige status = 'pending' en la fila
+-- nueva.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        BEGIN
+            UPDATE join_requests
+            SET status = 'accepted'
+            WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+              AND user_id = '22222222-2222-2222-2222-222222222222';
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA: Beto se aceptó su propia solicitud';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 11b — nadie se acepta su propia solicitud';
+        END;
+    END
+$$;
+
+-- Ni puede reasignársela a otra persona.
+DO
+$$
+    DECLARE
+        afectadas INTEGER;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        BEGIN
+            UPDATE join_requests
+            SET user_id = '11111111-1111-1111-1111-111111111111'
+            WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+              AND user_id = '22222222-2222-2222-2222-222222222222';
+            GET DIAGNOSTICS afectadas = ROW_COUNT;
+            RESET ROLE;
+            IF afectadas <> 0 THEN
+                RAISE EXCEPTION 'FUGA: Beto movió su solicitud al user_id de Ana';
+            END IF;
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RESET ROLE;
+        END;
+        RAISE NOTICE 'OK 11c — una solicitud no se puede reasignar a otro usuario';
+    END
+$$;
+
+-- Y el creador ya no tiene UPDATE directo: acepta y rechaza por las RPC, que son las
+-- que validan estado, cupo y quién llama.
+DO
+$$
+    DECLARE
+        afectadas INTEGER;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        UPDATE join_requests
+        SET status = 'accepted'
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '22222222-2222-2222-2222-222222222222';
+        GET DIAGNOSTICS afectadas = ROW_COUNT;
+        RESET ROLE;
+
+        IF afectadas <> 0 THEN
+            RAISE EXCEPTION 'FUGA: la creadora cambió el estado por UPDATE directo (filas=%)', afectadas;
+        END IF;
+        RAISE NOTICE 'OK 11d — el creador no tiene UPDATE directo sobre las solicitudes';
+    END
+$$;
+
+-- La otra mitad, que es la que importa para que la app siga andando: la RPC de
+-- aceptar sigue funcionando para el creador.
+DO
+$$
+    DECLARE
+        v_request_id UUID;
+        v_status     request_status;
+    BEGIN
+        SELECT id
+        INTO v_request_id
+        FROM join_requests
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '22222222-2222-2222-2222-222222222222';
+
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        PERFORM accept_join_request(v_request_id);
+        RESET ROLE;
+
+        SELECT status INTO v_status FROM join_requests WHERE id = v_request_id;
+
+        IF v_status <> 'accepted' THEN
+            RAISE EXCEPTION 'ROTO: accept_join_request no aceptó la solicitud (quedó %)', v_status;
+        END IF;
+        RAISE NOTICE 'OK 11e — accept_join_request sigue funcionando para el creador';
     END
 $$;
 

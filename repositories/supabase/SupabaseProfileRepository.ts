@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { Profile, SportType } from '@/types/database.types'
 import { parseRowPoints, parseRowsPoints, serializePoint } from '../coords'
+import { likePattern, normalizeSearchLimit } from './searchPattern'
 import type { IProfileRepository, UserStats } from '../interfaces/IProfileRepository'
 
 /** PostgreSQL POINT espera el string "(x,y)"; el cliente trabaja con { x, y }. */
@@ -52,11 +53,16 @@ export class SupabaseProfileRepository implements IProfileRepository {
 	): Promise<Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'sport_levels'>[]> {
 		if (query.trim().length < 2) return []
 
+		// likePattern y no query.trim(): PostgREST traduce `*` a `%` en los filtros
+		// ilike, así que escribir un `*` en el buscador devolvía a todo el mundo hasta
+		// el límite. No es una inyección como la que tenía searchUsers —el valor va
+		// como parámetro— pero es el mismo descuido de dar por sentado que el texto del
+		// usuario es texto.
 		let q = supabase
 			.from('profiles')
 			.select('id, full_name, avatar_url, sport_levels')
-			.ilike('full_name', `%${query.trim()}%`)
-			.limit(options?.limit ?? 10)
+			.ilike('full_name', `%${likePattern(query)}%`)
+			.limit(normalizeSearchLimit(options?.limit ?? 10))
 
 		if (options?.excludeUserId) {
 			q = q.neq('id', options.excludeUserId)

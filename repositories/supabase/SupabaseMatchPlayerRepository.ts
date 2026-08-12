@@ -1,11 +1,9 @@
 import { uniqueTopic } from './realtimeTopic'
+import { likePattern, looksLikeEmail, normalizeSearchLimit } from './searchPattern'
 import { supabase } from '@/lib/supabase'
 import type { MatchPlayer, MatchPlayerWithUser, Profile, TeamSlot } from '@/types/database.types'
 import type { AddMultiplePlayersResult, AddPlayerInput, IMatchPlayerRepository } from '../interfaces/IMatchPlayerRepository'
 import type { SubscriptionHandle } from '../types'
-
-const normalizeSearchQuery = (query: string) => query.trim().replace(/[%_\\]/g, '\\$&')
-const normalizeSearchLimit = (limit: number) => Math.max(1, Math.min(limit, 10))
 
 export class SupabaseMatchPlayerRepository implements IMatchPlayerRepository {
 	async add(matchId: string, addedByUserId: string, player: AddPlayerInput): Promise<MatchPlayer> {
@@ -89,14 +87,33 @@ export class SupabaseMatchPlayerRepository implements IMatchPlayerRepository {
 		return { canAdd: match.status === 'open' && remaining > 0, remaining }
 	}
 
+	/**
+	 * Busca usuarios para agregar a un partido.
+	 *
+	 * Antes esto armaba el filtro concatenando el texto del usuario dentro de un
+	 * `.or()`:
+	 *
+	 *     .or(`full_name.ilike.%${safeQuery}%,email.ilike.%${safeQuery}%`)
+	 *
+	 * En un `.or()` la coma separa condiciones, y el saneado sólo tapaba los comodines
+	 * de LIKE. Con escribir `a,phone.not.is.null` en el buscador se inyectaba una
+	 * condición nueva, sobre columnas que ni aparecen en el `select`: servía para
+	 * confirmar si un mail existe, enumerar por teléfono o por zona, y lo que
+	 * matcheaba salía con el mail incluido.
+	 *
+	 * Ahora es UNA sola condición, con el valor mandado como parámetro por `.ilike()`.
+	 * Y el mail se busca por igualdad, no por subcadena: `%@gmail%` devolvía el nombre
+	 * y la dirección de media base, que es un cosechador de mails, no un buscador.
+	 * `.ilike()` sin comodines es exactamente una comparación exacta insensible a
+	 * mayúsculas, así que no hace falta asumir cómo quedó guardado el mail.
+	 */
 	async searchUsers(query: string, options?: { excludeUserId?: string; limit?: number }): Promise<Profile[]> {
-		if (query.trim().length < 2) return []
-		const safeQuery = normalizeSearchQuery(query)
-		let q = supabase
-			.from('profiles')
-			.select('id, full_name, avatar_url, email, sport_levels')
-			.or(`full_name.ilike.%${safeQuery}%,email.ilike.%${safeQuery}%`)
-			.limit(normalizeSearchLimit(options?.limit ?? 10))
+		const raw = query.trim()
+		if (raw.length < 2) return []
+
+		let q = supabase.from('profiles').select('id, full_name, avatar_url, email, sport_levels').limit(normalizeSearchLimit(options?.limit ?? 10))
+
+		q = looksLikeEmail(raw) ? q.ilike('email', likePattern(raw)) : q.ilike('full_name', `%${likePattern(raw)}%`)
 
 		if (options?.excludeUserId) {
 			q = q.neq('id', options.excludeUserId)

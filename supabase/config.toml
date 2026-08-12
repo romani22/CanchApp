@@ -375,6 +375,15 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# La validación del JWT queda explícita, no heredada del default: es el valor que
+# tiene que tener también la función desplegada. Ojo con lo que significa — la anon
+# key es un JWT válido y viaja adentro del APK, así que esto NO autoriza a nadie.
+# La autorización real de send-push-notification es el header x-webhook-secret que
+# valida la función; esto es la capa de abajo. Ver functions/send-push-notification/README.md.
+[functions.send-push-notification]
+enabled = true
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327
