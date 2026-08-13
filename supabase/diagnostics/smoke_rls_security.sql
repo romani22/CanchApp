@@ -442,10 +442,11 @@ $$;
 -- Pero las del cliente sí tienen que estar abiertas.
 --
 -- Eran nueve hasta la 025. La 026 borró add_multiple_players y remove_match_player
--- (feature muerta, sin chequeo de autorización), así que quedan siete. Y ojo con
--- volver a agregarlas a esta lista sin que existan: has_function_privilege() sobre
--- una función inexistente no devuelve false, corta con "function does not exist" y
--- el smoke test entero muere ahí. El bloque 9b es el que verifica que sigan borradas.
+-- (feature muerta, sin chequeo de autorización) y la 027 agregó las dos de
+-- invitaciones, así que son nueve otra vez. Y ojo con listar una que no exista:
+-- has_function_privilege() sobre una función inexistente no devuelve false, corta
+-- con "function does not exist" y el smoke test entero muere ahí. El bloque 9b es el
+-- que verifica que las borradas sigan borradas.
 DO
 $$
     DECLARE
@@ -454,6 +455,8 @@ $$
         SELECT string_agg(f.nombre, ', ') INTO cerradas
         FROM (VALUES ('accept_join_request(uuid)'),
                      ('reject_join_request(uuid)'),
+                     ('accept_match_invitation(uuid)'),
+                     ('reject_match_invitation(uuid)'),
                      ('save_match_result(uuid,integer,integer,jsonb,text,jsonb)'),
                      ('delete_match_result(uuid)'),
                      ('vote_match_result(uuid,text,text)'),
@@ -465,7 +468,7 @@ $$
         IF cerradas IS NOT NULL THEN
             RAISE EXCEPTION 'ROTO: la app no puede llamar a %', cerradas;
         END IF;
-        RAISE NOTICE 'OK 6c — las 7 RPC del cliente siguen abiertas';
+        RAISE NOTICE 'OK 6c — las 9 RPC del cliente siguen abiertas';
     END
 $$;
 
@@ -552,6 +555,34 @@ $$
             RAISE EXCEPTION 'ROTO: user_stats no devuelve el perfil propio (filas=%)', encontrado;
         END IF;
         RAISE NOTICE 'OK 6g — user_stats sigue funcionando para la app';
+    END
+$$;
+
+-- Guardar el perfil sigue funcionando: profiles.sport_levels tiene un CHECK que
+-- llama a sport_levels_are_valid(), y un CHECK se evalúa con los privilegios de
+-- quien ESCRIBE. Cada vez que una migración revoca EXECUTE en masa para volver a
+-- fijar la línea de base (la 025 y la 027 lo hacen) se lleva también ese GRANT, y
+-- el síntoma es un "permission denied for function" al guardar el perfil que no
+-- menciona el CHECK por ningún lado. Este bloque es la red para eso.
+DO
+$$
+    DECLARE
+        v_levels JSONB;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        UPDATE profiles
+        SET sport_levels = '{"futbol":"intermedio"}'::JSONB
+        WHERE id = '11111111-1111-1111-1111-111111111111';
+        RESET ROLE;
+
+        SELECT sport_levels INTO v_levels FROM profiles
+        WHERE id = '11111111-1111-1111-1111-111111111111';
+
+        IF v_levels IS NULL OR v_levels->>'futbol' IS DISTINCT FROM 'intermedio' THEN
+            RAISE EXCEPTION 'ROTO: no se pudo guardar sport_levels (quedó %)', v_levels;
+        END IF;
+        RAISE NOTICE 'OK 6h — el CHECK de sport_levels conserva su GRANT de EXECUTE';
     END
 $$;
 
@@ -790,10 +821,17 @@ $$
 $$;
 
 -- Ni puede reasignársela a otra persona.
+--
+-- Se verifica el DATO y no las filas afectadas, porque el mecanismo cambió con la
+-- 027 y la propiedad es la misma: antes el WITH CHECK de la policy rechazaba el
+-- UPDATE, y ahora el trigger protect_join_request_identity le restaura el user_id
+-- antes de que la policy lo mire. O sea que el UPDATE ahora "funciona" y no cambia
+-- nada — un test que contara filas daría falso positivo de fuga.
 DO
 $$
     DECLARE
-        afectadas INTEGER;
+        v_dueño   UUID;
+        v_de_ana  INTEGER;
     BEGIN
         SET LOCAL ROLE authenticated;
         SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
@@ -802,15 +840,27 @@ $$
             SET user_id = '11111111-1111-1111-1111-111111111111'
             WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
               AND user_id = '22222222-2222-2222-2222-222222222222';
-            GET DIAGNOSTICS afectadas = ROW_COUNT;
             RESET ROLE;
-            IF afectadas <> 0 THEN
-                RAISE EXCEPTION 'FUGA: Beto movió su solicitud al user_id de Ana';
-            END IF;
         EXCEPTION
             WHEN insufficient_privilege THEN
                 RESET ROLE;
         END;
+
+        SELECT user_id INTO v_dueño FROM join_requests
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND id = (SELECT id FROM join_requests
+                    WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+                      AND user_id IN ('11111111-1111-1111-1111-111111111111',
+                                      '22222222-2222-2222-2222-222222222222')
+                    LIMIT 1);
+
+        SELECT COUNT(*) INTO v_de_ana FROM join_requests
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '11111111-1111-1111-1111-111111111111';
+
+        IF v_dueño <> '22222222-2222-2222-2222-222222222222' OR v_de_ana <> 0 THEN
+            RAISE EXCEPTION 'FUGA: la solicitud cambió de dueño (dueño=%, filas de Ana=%)', v_dueño, v_de_ana;
+        END IF;
         RAISE NOTICE 'OK 11c — una solicitud no se puede reasignar a otro usuario';
     END
 $$;
@@ -863,6 +913,274 @@ $$
             RAISE EXCEPTION 'ROTO: accept_join_request no aceptó la solicitud (quedó %)', v_status;
         END IF;
         RAISE NOTICE 'OK 11e — accept_join_request sigue funcionando para el creador';
+    END
+$$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 12. Invitaciones: el consentimiento del invitado (migración 027)
+-- ══════════════════════════════════════════════════════════════════════════
+-- Es el arreglo del hallazgo A4. Antes el creador insertaba cualquier user_id en
+-- match_participants: te metía en su partido sin preguntarte y desde ahí te
+-- calificaba con 1 estrella y te cargaba derrotas que bajan el ELO de verdad.
+--
+-- La pieza que hace que el arreglo no sea decorativo es que el creador NO pueda
+-- aceptar la invitación que él mismo mandó. Si pudiera, el atacante crea su
+-- partido, invita a la víctima, aprueba su propia invitación, y estamos igual que
+-- antes con dos pasos más.
+INSERT INTO auth.users (id, email, raw_user_meta_data)
+VALUES ('44444444-4444-4444-4444-444444444444', 'caro@test.com', '{"full_name":"Caro"}');
+
+-- ── Quién puede invitar ────────────────────────────────────────────────────
+DO
+$$
+    DECLARE
+        v_id UUID;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        INSERT INTO join_requests (match_id, user_id, invited_by)
+        VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                '44444444-4444-4444-4444-444444444444',
+                '11111111-1111-1111-1111-111111111111')
+        RETURNING id INTO v_id;
+        RESET ROLE;
+
+        IF v_id IS NULL THEN
+            RAISE EXCEPTION 'ROTO: la creadora no pudo invitar';
+        END IF;
+        RAISE NOTICE 'OK 12 — el creador puede invitar a un usuario registrado';
+    END
+$$;
+
+-- Beto no es el creador del partido: no invita a nadie.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        BEGIN
+            INSERT INTO join_requests (match_id, user_id, invited_by)
+            VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    '44444444-4444-4444-4444-444444444444',
+                    '22222222-2222-2222-2222-222222222222');
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA: Beto invitó gente al partido de Ana';
+        EXCEPTION
+            WHEN insufficient_privilege OR unique_violation THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 12b — sólo el creador del partido invita';
+        END;
+    END
+$$;
+
+-- Ni se firma una invitación con el uid de otro.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        BEGIN
+            INSERT INTO join_requests (match_id, user_id, invited_by)
+            VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    '44444444-4444-4444-4444-444444444444',
+                    '22222222-2222-2222-2222-222222222222');
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA: Ana firmó una invitación como si la hubiera hecho Beto';
+        EXCEPTION
+            WHEN insufficient_privilege OR unique_violation THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 12c — la invitación va firmada por quien la manda';
+        END;
+    END
+$$;
+
+-- ── EL BLOQUE QUE IMPORTA: el creador no acepta su propia invitación ───────
+DO
+$$
+    DECLARE
+        v_id UUID;
+    BEGIN
+        SELECT id INTO v_id FROM join_requests
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '44444444-4444-4444-4444-444444444444';
+
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        BEGIN
+            PERFORM accept_join_request(v_id);
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA GRAVE: la creadora aceptó su propia invitación — A4 sigue abierto';
+        EXCEPTION
+            WHEN raise_exception THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 12d — el creador NO puede aceptar la invitación que mandó';
+        END;
+    END
+$$;
+
+-- Y un tercero tampoco: la invitación es de Caro.
+DO
+$$
+    DECLARE
+        v_id UUID;
+    BEGIN
+        SELECT id INTO v_id FROM join_requests
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '44444444-4444-4444-4444-444444444444';
+
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        BEGIN
+            PERFORM accept_match_invitation(v_id);
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA: Beto aceptó la invitación de Caro';
+        EXCEPTION
+            WHEN raise_exception THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 12e — la invitación la acepta sólo el invitado';
+        END;
+    END
+$$;
+
+-- Ni se puede convertir la invitación en solicitud para que la acepte el creador.
+DO
+$$
+    DECLARE
+        v_invited_by UUID;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}';
+        UPDATE join_requests
+        SET invited_by = NULL
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '44444444-4444-4444-4444-444444444444';
+        RESET ROLE;
+
+        SELECT invited_by INTO v_invited_by FROM join_requests
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '44444444-4444-4444-4444-444444444444';
+
+        IF v_invited_by IS NULL THEN
+            RAISE EXCEPTION 'FUGA: se pudo borrar invited_by y volver la invitación una solicitud';
+        END IF;
+        RAISE NOTICE 'OK 12f — invited_by no se puede editar';
+    END
+$$;
+
+-- ── La otra mitad: el invitado sí puede, y recién ahí entra al partido ─────
+DO
+$$
+    DECLARE
+        v_id           UUID;
+        v_participante INTEGER;
+        v_status       request_status;
+    BEGIN
+        SELECT id INTO v_id FROM join_requests
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '44444444-4444-4444-4444-444444444444';
+
+        -- Antes de aceptar NO está en el partido: es todo el punto de la migración.
+        SELECT COUNT(*) INTO v_participante FROM match_participants
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '44444444-4444-4444-4444-444444444444';
+        IF v_participante <> 0 THEN
+            RAISE EXCEPTION 'FUGA: Caro ya era participante sin haber aceptado nada';
+        END IF;
+
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}';
+        PERFORM accept_match_invitation(v_id);
+        RESET ROLE;
+
+        SELECT COUNT(*) INTO v_participante FROM match_participants
+        WHERE match_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+          AND user_id = '44444444-4444-4444-4444-444444444444';
+        SELECT status INTO v_status FROM join_requests WHERE id = v_id;
+
+        IF v_participante <> 1 OR v_status <> 'accepted' THEN
+            RAISE EXCEPTION 'ROTO: aceptar la invitación no sumó a Caro (participante=%, status=%)', v_participante, v_status;
+        END IF;
+        RAISE NOTICE 'OK 12g — el invitado acepta y recién ahí entra al partido';
+    END
+$$;
+
+-- ── La cerradura de verdad: el atajo por PostgREST ─────────────────────────
+-- Todo lo anterior prueba el camino de la app. Esto prueba lo que la base permite,
+-- que es lo único que un atacante respeta: sin la policy de la 027, un POST a
+-- /rest/v1/match_participants saltea el flujo de invitación completo.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        BEGIN
+            -- Ana ES la creadora del partido. Antes de la 027 esto pasaba, y era todo el
+            -- hallazgo A4: con la víctima adentro se la calificaba con 1 estrella y se le
+            -- cargaban derrotas que le bajan el ELO.
+            INSERT INTO match_participants (match_id, user_id)
+            VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333');
+            RESET ROLE;
+            RAISE EXCEPTION 'FUGA GRAVE: la creadora metió a un usuario registrado sin invitación — A4 sigue abierto';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RESET ROLE;
+                RAISE NOTICE 'OK 12i — no se puede meter a un registrado salteando la invitación';
+        END;
+    END
+$$;
+
+-- Pero las dos excepciones legítimas siguen andando, o se rompe crear un partido.
+DO
+$$
+    DECLARE
+        v_match_id UUID := 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+        v_invitados INTEGER;
+        v_yo        INTEGER;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+
+        INSERT INTO matches (id, creator_id, sport, title, starts_at, venue_name, total_players, players_needed)
+        VALUES (v_match_id, '22222222-2222-2222-2222-222222222222',
+                'tenis', 'Partido de Beto', NOW() + INTERVAL '2 days', 'Cancha 2', 4, 4);
+
+        -- El creador sumándose a sí mismo: es lo primero que hace Create.tsx.
+        INSERT INTO match_participants (match_id, user_id)
+        VALUES (v_match_id, '22222222-2222-2222-2222-222222222222');
+
+        -- Y un invitado sin cuenta, que es para lo que existe la excepción.
+        INSERT INTO match_participants (match_id, guest_name)
+        VALUES (v_match_id, 'Primo de Beto');
+        RESET ROLE;
+
+        SELECT COUNT(*) INTO v_yo FROM match_participants
+        WHERE match_id = v_match_id AND user_id = '22222222-2222-2222-2222-222222222222';
+        SELECT COUNT(*) INTO v_invitados FROM match_participants
+        WHERE match_id = v_match_id AND guest_name = 'Primo de Beto';
+
+        IF v_yo <> 1 OR v_invitados <> 1 THEN
+            RAISE EXCEPTION 'ROTO: crear un partido dejó de funcionar (creador=%, invitado=%)', v_yo, v_invitados;
+        END IF;
+        RAISE NOTICE 'OK 12j — el creador sigue pudiendo sumarse y agregar invitados sin cuenta';
+    END
+$$;
+
+-- Y el creador se enteró: invitó y le contestaron.
+DO
+$$
+    DECLARE
+        v_avisos INTEGER;
+    BEGIN
+        SELECT COUNT(*) INTO v_avisos FROM notifications
+        WHERE user_id = '11111111-1111-1111-1111-111111111111'
+          AND type = 'match_invitation'
+          AND title = 'Aceptaron tu invitación ✅';
+
+        IF v_avisos < 1 THEN
+            RAISE EXCEPTION 'ROTO: al creador no le llegó el aviso de que aceptaron';
+        END IF;
+        RAISE NOTICE 'OK 12h — al creador le avisan que aceptaron la invitación';
     END
 $$;
 

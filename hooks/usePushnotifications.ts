@@ -45,6 +45,9 @@ export function usePushNotifications() {
 				case 'player_joined':
 				case 'match_result':
 				case 'match_cancelled':
+				// La invitación se responde en el detalle del partido, que es donde están
+				// los botones de aceptar y rechazar (027).
+				case 'match_invitation':
 					if (match_id) router.push(`/(protected)/match/${match_id}`)
 					break
 				default:

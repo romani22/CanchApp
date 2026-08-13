@@ -10,7 +10,7 @@ import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { requestsService } from '@/services/requests.service'
 import { colors } from '@/theme/colors'
-import { JoinRequest, MatchResultVote, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
+import { JoinRequest, JoinRequestWithUser, MatchResultVote, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
 import { getSportImage } from '@/utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { addHours, format, isAfter, isPast, parseISO } from 'date-fns'
@@ -29,6 +29,10 @@ export default function MatchDetail() {
 	const [myRequest, setMyRequest] = useState<JoinRequest | null>(null)
 	// Solicitudes pendientes que tiene que responder el creador.
 	const [pendingCount, setPendingCount] = useState(0)
+	// Invitaciones que mandó el creador y todavía nadie respondió (027). Van
+	// separadas de pendingCount a propósito: son el caso inverso — acá el que tiene
+	// que responder es el invitado, no el creador.
+	const [pendingInvites, setPendingInvites] = useState<JoinRequestWithUser[]>([])
 	const [loading, setLoading] = useState(true)
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
@@ -67,7 +71,11 @@ export default function MatchDetail() {
 			// partido sólo la puede leer el creador (RLS de join_requests).
 			if (data.creator_id === user.id) {
 				const pending = await requestsService.getMatch(id as string).catch(() => [])
-				setPendingCount(pending.length)
+				// La misma consulta trae las dos direcciones desde la 027, y mezclarlas
+				// haría que el banner de "quieren unirse" contara a la gente que el creador
+				// invitó él mismo.
+				setPendingCount(pending.filter((r) => !r.invited_by).length)
+				setPendingInvites(pending.filter((r) => !!r.invited_by))
 			} else {
 				const mine = await requestsService.getMine(id as string, user.id).catch(() => null)
 				setMyRequest(mine)
@@ -108,8 +116,15 @@ export default function MatchDetail() {
 	// returns del render (loading / notFound) están después: un hook no puede
 	// quedar detrás de un return condicional.
 	const isParticipant = !!user && (match?.participants?.some((p) => p.user_id === user.id) ?? false)
-	const hasPendingRequest = myRequest?.status === 'pending'
-	const wasRejected = myRequest?.status === 'rejected'
+	// 027: join_requests guarda las dos direcciones y `invited_by` las separa. La
+	// distinción no es cosmética — de ella depende qué botón se le ofrece a quién:
+	// una solicitud la responde el creador, una invitación la responde el invitado.
+	const isInvitation = !!myRequest?.invited_by
+	const hasPendingRequest = myRequest?.status === 'pending' && !isInvitation
+	const hasPendingInvitation = myRequest?.status === 'pending' && isInvitation
+	// Un "rechazado" de una invitación es el propio usuario diciendo que no: no
+	// corresponde mostrarle "el creador rechazó tu solicitud" ni ofrecerle reintentar.
+	const wasRejected = myRequest?.status === 'rejected' && !isInvitation
 
 	// Los recordatorios (partido que arranca, resultado que falta) ya no se programan
 	// acá: los encola el servidor cada 5 minutos y llegan como cualquier otra
@@ -141,6 +156,65 @@ export default function MatchDetail() {
 		} finally {
 			setActionLoading(false)
 		}
+	}
+
+	// ── Responder una invitación ──────────────────────────────────────────
+	// El creador invita y el invitado decide: es la única forma de que alguien con
+	// cuenta entre a un partido. La aprobación del creador no sirve como
+	// consentimiento acá — protege el partido, no a la persona —, así que las RPC
+	// del servidor se niegan a que el creador responda su propia invitación.
+	const respondInvitation = async (accept: boolean) => {
+		if (!myRequest) return
+		try {
+			setActionLoading(true)
+			if (accept) {
+				await requestsService.acceptInvitation(myRequest.id)
+			} else {
+				await requestsService.rejectInvitation(myRequest.id)
+			}
+			await loadMatch()
+		} catch (err) {
+			console.error('[MatchDetail] Error respondiendo la invitación:', err)
+			// El mensaje del servidor es útil acá: entre que la invitación se manda y se
+			// responde el partido puede haberse llenado, cancelado o jugado.
+			Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo responder la invitación.')
+		} finally {
+			setActionLoading(false)
+		}
+	}
+
+	// El creador da de baja una invitación que mandó. No hay aviso al invitado: la
+	// notificación que ya le llegó lo lleva al partido, y ahí se encuentra con el botón
+	// de solicitar entrar como cualquier otro. Si alguna vez molesta, el lugar del
+	// aviso es un trigger de DELETE, no esta función.
+	const handleCancelInvitation = (invitation: JoinRequestWithUser) => {
+		const nombre = invitation.user?.full_name ?? 'este jugador'
+		Alert.alert('Cancelar la invitación', `¿Cancelar la invitación a ${nombre}?`, [
+			{ text: 'Volver', style: 'cancel' },
+			{
+				text: 'Cancelar invitación',
+				style: 'destructive',
+				onPress: async () => {
+					try {
+						setActionLoading(true)
+						await requestsService.cancel(invitation.id)
+						await loadMatch()
+					} catch (err) {
+						console.error('[MatchDetail] Error cancelando la invitación:', err)
+						Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cancelar la invitación.')
+					} finally {
+						setActionLoading(false)
+					}
+				},
+			},
+		])
+	}
+
+	const handleRejectInvitation = () => {
+		Alert.alert('Rechazar la invitación', '¿Seguro que no vas a jugar este partido?', [
+			{ text: 'Volver', style: 'cancel' },
+			{ text: 'Rechazar', style: 'destructive', onPress: () => respondInvitation(false) },
+		])
 	}
 
 	// ── Votar el resultado ────────────────────────────────────────────────
@@ -382,6 +456,47 @@ export default function MatchDetail() {
 						</TouchableOpacity>
 					)}
 
+					{/* Invitaciones que el creador mandó y nadie respondió todavía (027).
+					    Separadas del banner de arriba porque acá el que tiene que mover
+					    ficha es el invitado: al creador sólo le corresponde esperar. */}
+					{isCreator && pendingInvites.length > 0 && !isCancelled && (
+						<View style={localStyles.invitesPendingBox}>
+							<View style={localStyles.invitesPendingHeader}>
+								<Ionicons name='hourglass-outline' size={18} color={colors.warning} />
+								<Text style={localStyles.invitesPendingTitle}>{pendingInvites.length === 1 ? 'Invitación sin responder' : `${pendingInvites.length} invitaciones sin responder`}</Text>
+							</View>
+							{pendingInvites.map((invitation) => (
+								<View key={invitation.id} style={localStyles.invitesPendingRow}>
+									<Text style={localStyles.invitesPendingName} numberOfLines={1}>
+										{invitation.user?.full_name ?? 'Jugador'}
+									</Text>
+									<TouchableOpacity onPress={() => handleCancelInvitation(invitation)} disabled={actionLoading} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+										<Ionicons name='close-circle' size={22} color={colors.error} />
+									</TouchableOpacity>
+								</View>
+							))}
+						</View>
+					)}
+
+					{/* Me invitaron: acepto o rechazo yo. El creador no puede responder por
+					    mí — las RPC del servidor se lo niegan, no es sólo que no vea el botón. */}
+					{!isCreator && !isParticipant && hasPendingInvitation && !isCancelled && !hasEnded && (
+						<View style={localStyles.invitationBanner}>
+							<View style={localStyles.invitationHeader}>
+								<Ionicons name='mail-open-outline' size={20} color={colors.primary} />
+								<Text style={localStyles.invitationText}>{match.creator?.full_name ?? 'El creador'} te invitó a este partido</Text>
+							</View>
+							<View style={localStyles.invitationActions}>
+								<TouchableOpacity style={[localStyles.invitationBtn, localStyles.invitationRejectBtn]} onPress={handleRejectInvitation} disabled={actionLoading}>
+									<Text style={localStyles.invitationRejectText}>Rechazar</Text>
+								</TouchableOpacity>
+								<TouchableOpacity style={[localStyles.invitationBtn, localStyles.invitationAcceptBtn]} onPress={() => respondInvitation(true)} disabled={actionLoading}>
+									{actionLoading ? <ActivityIndicator color={colors.backgroundDark} size='small' /> : <Text style={localStyles.invitationAcceptText}>Aceptar y unirme</Text>}
+								</TouchableOpacity>
+							</View>
+						</View>
+					)}
+
 					{/* Estado de mi solicitud */}
 					{!isCreator && !isParticipant && hasPendingRequest && (
 						<View style={localStyles.requestPendingBanner}>
@@ -469,6 +584,13 @@ export default function MatchDetail() {
 							{actionLoading ? <ActivityIndicator color='white' /> : <Text style={styles.mainButtonText}>Salir del partido</Text>}
 						</TouchableOpacity>
 					)
+				) : hasPendingInvitation && !hasEnded ? (
+					// Los botones de responder están en el banner de arriba: acá abajo iría
+					// "Solicitar unirme", que para alguien ya invitado no tiene sentido.
+					<View style={localStyles.cancelledFooter}>
+						<Ionicons name='mail-unread-outline' size={20} color={colors.primary} />
+						<Text style={[localStyles.cancelledFooterText, { color: colors.primary }]}>Tenés una invitación para responder</Text>
+					</View>
 				) : hasPendingRequest && !hasEnded ? (
 					<TouchableOpacity style={localStyles.cancelButton} onPress={handleCancelRequest} disabled={actionLoading}>
 						{actionLoading ? (
@@ -600,6 +722,93 @@ const localStyles = StyleSheet.create({
 		color: colors.warning,
 		fontSize: 13,
 		flex: 1,
+	},
+	// Invitaciones que mandó el creador y nadie respondió. Es una lista y no una línea
+	// de texto porque cada una se puede cancelar por separado.
+	invitesPendingBox: {
+		backgroundColor: `${colors.warning}15`,
+		borderWidth: 1,
+		borderColor: `${colors.warning}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		marginBottom: 12,
+		gap: 6,
+	},
+	invitesPendingHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+	},
+	invitesPendingTitle: {
+		color: colors.warning,
+		fontSize: 13,
+		fontWeight: '600',
+		flex: 1,
+	},
+	invitesPendingRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 10,
+		paddingLeft: 26,
+	},
+	invitesPendingName: {
+		color: colors.textSecondaryDark,
+		fontSize: 13,
+		flex: 1,
+	},
+	// Invitación pendiente (027). Es el único banner con acciones adentro, así que va
+	// en columna en vez de en fila: los dos botones necesitan el ancho completo para
+	// que "Aceptar y unirme" no se corte en pantallas angostas.
+	invitationBanner: {
+		backgroundColor: `${colors.primary}15`,
+		borderWidth: 1,
+		borderColor: `${colors.primary}40`,
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		marginBottom: 12,
+		gap: 12,
+	},
+	invitationHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+	},
+	invitationText: {
+		color: colors.primary,
+		fontSize: 14,
+		fontWeight: '600',
+		flex: 1,
+	},
+	invitationActions: {
+		flexDirection: 'row',
+		gap: 10,
+	},
+	invitationBtn: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		borderRadius: 10,
+		paddingVertical: 11,
+	},
+	invitationRejectBtn: {
+		borderWidth: 1,
+		borderColor: `${colors.error}60`,
+		backgroundColor: `${colors.error}12`,
+	},
+	invitationRejectText: {
+		color: colors.error,
+		fontSize: 14,
+		fontWeight: '600',
+	},
+	invitationAcceptBtn: {
+		backgroundColor: colors.primary,
+	},
+	invitationAcceptText: {
+		color: colors.backgroundDark,
+		fontSize: 14,
+		fontWeight: '700',
 	},
 	cancelledFooter: {
 		flexDirection: 'row',

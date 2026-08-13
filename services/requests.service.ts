@@ -7,6 +7,15 @@ export const requestsService = {
 		return repositories.joinRequests.create(matchId, userId, message, teamSlot)
 	},
 
+	/**
+	 * El creador invita a un usuario registrado: queda pendiente hasta que acepte
+	 * (027). Los invitados sin cuenta no pasan por acá — a esos los agrega
+	 * matchParticipantsService.addGuest, porque no hay a quién avisarle.
+	 */
+	async invite(matchId: string, userId: string, invitedBy: string, teamSlot?: TeamSlot) {
+		return repositories.joinRequests.invite(matchId, userId, invitedBy, teamSlot)
+	},
+
 	async getMine(matchId: string, userId: string): Promise<JoinRequest | null> {
 		return repositories.joinRequests.getMine(matchId, userId)
 	},
@@ -29,6 +38,15 @@ export const requestsService = {
 
 	async reject(requestId: string) {
 		return repositories.joinRequests.reject(requestId)
+	},
+
+	/** Lo responde el invitado. accept/reject son del otro lado: los usa el creador. */
+	async acceptInvitation(requestId: string) {
+		return repositories.joinRequests.acceptInvitation(requestId)
+	},
+
+	async rejectInvitation(requestId: string) {
+		return repositories.joinRequests.rejectInvitation(requestId)
 	},
 
 	async cancel(requestId: string) {

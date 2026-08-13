@@ -7,6 +7,7 @@ import { useVenueZone } from '@/hooks/useVenueZone'
 import { matchesService } from '@/services/matches.service'
 import { profilesService } from '@/services/profiles.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
+import { requestsService } from '@/services/requests.service'
 import { colors } from '@/theme/colors'
 import { TEAM_CONFIG, buildMatchTitle, levelForSport, levelLabels, levels, sports } from '@/constants/matches'
 import { SkillLevel, SportLevels, SportType, TeamMode, TeamSlot } from '@/types/database.types'
@@ -243,15 +244,38 @@ export default function CreateMatchScreen() {
 			// Unirse como creador con su equipo asignado (si aplica)
 			await matchParticipantsService.addParticipant(match.id, user.id, creatorTeamSlot ?? undefined)
 
-			// Agregar participantes confirmados con su equipo. Los pone el creador, así
-			// que entran directo: la aprobación es para quien pide entrar desde Explorar.
-			await Promise.all(confirmed.map((p) => (p.type === 'user' ? matchParticipantsService.addParticipant(match.id, (p as any).userId, p.teamSlot ?? undefined) : matchParticipantsService.addGuest(match.id, p.name, p.teamSlot ?? undefined))))
+			// Los dos tipos de participante siguen caminos distintos, y la diferencia es
+			// quién tiene algo que consentir:
+			//
+			//   · Invitado sin cuenta → entra directo. No hay a quién preguntarle, y no
+			//     tiene perfil, ni rating, ni ELO que se puedan tocar.
+			//   · Usuario registrado → recibe una invitación y entra cuando acepta (027).
+			//     Antes entraba derecho, y eso era lo que permitía fabricar partidos con
+			//     cualquiera adentro para calificarlo con 1 estrella y cargarle derrotas.
+			//
+			// allSettled y no all: que una invitación falle (por ejemplo, si esa persona
+			// ya había pedido entrar) no puede tirar abajo la creación del partido, que a
+			// esta altura ya está publicado.
+			const outcomes = await Promise.allSettled(confirmed.map((p) => (p.type === 'user' ? requestsService.invite(match.id, p.userId, user.id, p.teamSlot ?? undefined) : matchParticipantsService.addGuest(match.id, p.name, p.teamSlot ?? undefined))))
+
+			const failed = outcomes.filter((o) => o.status === 'rejected')
+			if (failed.length > 0) {
+				console.error('[Create] participantes que no se pudieron sumar:', failed)
+			}
+
+			const invitedCount = confirmed.filter((p) => p.type === 'user').length
 
 			// El recordatorio del partido y el aviso de "cargá el resultado" los encola el
 			// servidor cuando corresponde (024_notifications_single_channel.sql): no hay
 			// nada que programar acá, y así también le llegan a quien se suma después.
 
-			Alert.alert('¡Partido publicado!', 'Ya está visible para otros jugadores.', [{ text: 'Ver partido', onPress: () => router.replace(`/match/${match.id}`) }])
+			// El mensaje dice la verdad sobre lo que pasó: si se invitó gente, esa gente
+			// TODAVÍA NO está en el partido. Decir "publicado" a secas hacía que el
+			// creador contara jugadores que no aceptaron todavía.
+			const invitedNote = invitedCount === 0 ? '' : invitedCount === 1 ? ' Invitamos a 1 jugador: entra cuando acepte.' : ` Invitamos a ${invitedCount} jugadores: entran cuando acepten.`
+			const failedNote = failed.length === 0 ? '' : ` ${failed.length === 1 ? 'A 1 no se lo pudo sumar' : `A ${failed.length} no se los pudo sumar`}: revisalo desde el partido.`
+
+			Alert.alert('¡Partido publicado!', `Ya está visible para otros jugadores.${invitedNote}${failedNote}`, [{ text: 'Ver partido', onPress: () => router.replace(`/match/${match.id}`) }])
 		} catch (error) {
 			console.error('[Create]', error)
 			Alert.alert('Error', 'No se pudo crear el partido. Intentá de nuevo.')

@@ -27,9 +27,9 @@ Lo que queda son **cinco caminos que reabren, por la puerta de al lado, justo lo
 |---|---|
 | A1 | ✅ Corregido y **verificado en producción**: secreto de webhook + relectura de la fila. Camino completo probado end-to-end. |
 | A2, A3, A5, M2, M3 | ✅ Corregidos en `026_close_write_paths.sql`, **aplicada en la base hosteada** y confirmada con `verify_026.sql` (15/15 OK). |
-| A6 | ✅ Corregido en el cliente: se fue el `.or()` interpolado y el mail dejó de buscarse por subcadena. Llega con el próximo build. |
-| M9 | ✅ Corregido en `app.json` (`blockedPermissions`). **Requiere un `prebuild` + build nuevo para tener efecto.** |
-| A4 | Criterio decidido (consentimiento de las dos partes). Se implementa junto con la feature de propuesta + aprobación, en la `027`. |
+| A6 | ✅ Corregido y **en la calle** (build del 2026-08-13): se fue el `.or()` interpolado y el mail dejó de buscarse por subcadena. |
+| M9 | ✅ Corregido en `app.json` (`blockedPermissions`) y buildeado. Falta confirmarlo con `adb shell dumpsys package com.romani22.canchapp \| findstr permission` — el manifest es generado, así que sólo vale si el build corrió `prebuild`. |
+| A4 | ✅ Corregido en `027_match_invitations.sql`: invitación + consentimiento del invitado. **Falta aplicar la migración en la base hosteada y hacer un build nuevo** (el cambio es de base y de cliente). |
 | M1, M4-M8, M10, B1-B9 | Abiertos. |
 
 Todo lo cerrado está validado: `supabase db reset` reaplica las 26 migraciones sin error, los tres smoke tests pasan completos (33 + 20 + 8 aserciones), `verify_026.sql` da 15/15 tanto local como en producción, `tsc` limpio, `eslint` limpio y **276 tests** del cliente en verde.
@@ -39,7 +39,7 @@ Todo lo cerrado está validado: `supabase db reset` reaplica las 26 migraciones 
 | A1 | ~~**Alta**~~ ✅ | ~~La Edge Function de push confía en el body del request: push arbitrario a cualquier usuario~~ |
 | A2 | ~~**Alta**~~ ✅ | ~~`add_multiple_players` y `remove_match_player`: `SECURITY DEFINER` sin ningún chequeo de autorización~~ |
 | A3 | ~~**Alta**~~ ✅ | ~~RLS de `match_players` permite agregar jugadores a partidos ajenos → push con texto controlado~~ |
-| A4 | **Alta** | Cualquiera puede destruir el rating y el ELO de cualquier usuario con partidos fabricados |
+| A4 | ~~**Alta**~~ ✅ | ~~Cualquiera puede destruir el rating y el ELO de cualquier usuario con partidos fabricados~~ |
 | A5 | ~~**Alta**~~ ✅ | ~~`elo_rating` quedó fuera del trigger de columnas derivadas: es auto-editable~~ |
 | A6 | ~~**Media-alta**~~ ✅ | ~~Inyección de filtros PostgREST en el buscador de jugadores~~ |
 | M1 | Media | Mail, teléfono y coordenadas de todos los usuarios legibles por cualquier usuario logueado |
@@ -178,7 +178,19 @@ Y acotar con `TO authenticated` las policies de SELECT/DELETE de esta tabla, que
 
 ---
 
-## A4 — Se puede destruir el rating y el ELO de cualquier usuario
+## A4 — Se puede destruir el rating y el ELO de cualquier usuario ✅ CORREGIDO (027)
+
+> **Estado:** implementado con el criterio decidido. El creador ya no suma usuarios registrados: los **invita**, y entran cuando aceptan. Los invitados sin cuenta siguen entrando directo — no tienen perfil, rating ni ELO que se pueda tocar.
+>
+> La pieza que hace que no sea decorativo: **`accept_join_request` rechaza las invitaciones**. Sin eso el atacante crea su partido, invita a la víctima y aprueba su propia invitación, y el agujero queda igual con dos pasos más. El bloque 12d del smoke test intenta exactamente ese ataque, y el control 6 de `verify_027.sql` verifica que el guard esté (probado además rompiéndolo a propósito: reporta FALLA).
+>
+> Se reusó `join_requests` con una columna `invited_by` en vez de una tabla nueva: una invitación y una solicitud son la misma fila mirada desde los dos lados, y así el `UNIQUE (match_id, user_id)` hace trabajo real — no pueden coexistir una solicitud y una invitación entre las mismas dos partes.
+>
+> Tres cosas que aparecieron al implementarlo, las tres arregladas en la misma migración:
+>
+> 1. **El `ALTER DEFAULT PRIVILEGES` de la 025 no alcanza.** Las funciones nuevas nacieron con `EXECUTE` para `PUBLIC` (`proacl = NULL` en las de trigger, `{=X/postgres,…}` en las RPC), o sea invocables con la anon key. Lo detectó el bloque 6e del smoke test. La 027 rehace la línea de base completa —revocar todo y reabrir las nueve RPC— en vez de agregar dos GRANT y confiar en el default.
+> 2. **`player_joined` nunca se agregó al enum `notification_type`.** El trigger `notify_user_on_player_added` de la 013 lo usa, la columna `profiles.notify_player_joined` lo configura y la Edge Function lo mapea, pero el valor no existía en la base: ese trigger habría muerto con `invalid input value for enum` la primera vez que corriera. No se notó porque nunca corrió (vive sobre `match_players`). Se agregó junto con `match_invitation`.
+> 3. **Un `upsert` no sirve para invitar.** Con fila previa, PostgREST resuelve el conflicto con `ON CONFLICT DO UPDATE`, y esa rama pasa por la policy de UPDATE — falsa para el creador sobre la fila de otro. Fallaría con un error de permisos que no dice nada. El repositorio hace `INSERT` y resuelve el conflicto mirando la fila: si es una invitación suya la reemplaza, y si es una solicitud del usuario avisa que hay que aceptarla, no convertirla.
 
 **Dónde:** cadena entre `022_join_requires_approval.sql:148-152`, `025_security_hardening.sql:183-197` y `023_result_confirmations.sql:217+`
 
@@ -543,12 +555,14 @@ Vale dejarlo asentado, porque es lo que hace que esta auditoría encuentre cinco
 1. ✅ **A1** (Edge Function) — hecho y verificado end-to-end contra el proyecto hosteado.
 2. ✅ **A5**, **A2**, **A3**, **M2**, **M3** — migración `026_close_write_paths.sql`, validada localmente con `db reset` + los tres smoke tests. **Pendiente: aplicarla en la base hosteada.**
 3. ✅ **A6** (buscadores + helper compartido con tests) y **M9** (`app.json`). **Pendiente: el build nuevo**, que es lo que los pone en la calle.
-4. **A4** — junto con la feature de propuesta + aprobación, en la `027`. El criterio está decidido: el creador aprueba a todos, y además un usuario registrado tiene que aceptar (la aprobación del creador protege el partido, no a la persona: sin el segundo consentimiento el atacante aprueba su propia propuesta en su propio partido y el vector sigue vivo).
-5. **M10** — va con la `027` o antes, y conviene hacerlo pegado a A1: es el mismo problema una capa más afuera y comparte la mecánica del secreto.
-6. **M5** + **M6** — juntos, porque los dos son "mover cosas a SecureStore" y comparten la migración de datos.
-7. **M8** + **M7** — configuración del Dashboard y el dominio para App Links.
-8. **M1** — el más invasivo del lado del cliente (vista `public_profiles` y todos los `select('*')`).
-9. **M4**, **B1**, **B4**, **B5**, **B9**.
+4. ✅ **A4** — `027_match_invitations.sql` más los cambios de cliente. **Pendiente: aplicar la migración en producción y buildear.**
+5. **M8** — el más barato de todos: son cuatro interruptores en el Dashboard (confirmación de mail, largo mínimo de contraseña, requisitos, reautenticación para cambiarla) más el captcha. Cero código.
+6. **M10** — chico, y comparte la mecánica del secreto con A1: activar *Enhanced Security* en Expo, un secreto nuevo y un header en el `fetch`.
+7. **M5** + **M6** — juntos, porque los dos son "mover cosas a SecureStore" y comparten la migración de datos. M6 es el más urgente de los dos: guarda la contraseña en claro.
+8. **M4** — sacar el texto del usuario del push de difusión y poner un límite de partidos por hora.
+9. **M7** — necesita un dominio y publicar `assetlinks.json`, así que es el que más depende de algo externo.
+10. **M1** — el más invasivo del lado del cliente (vista `public_profiles` y todos los `select('*')`).
+11. **B1**, **B4**, **B5**, **B9** y el resto de la higiene.
 
 Cada punto de una migración va con su bloque en `smoke_rls_security.sql`, siguiendo el criterio que ya tenía el archivo: que el ataque falle **y** que el uso legítimo siga andando. La `026` agregó los bloques 8 a 11e con ese formato.
 

@@ -19,6 +19,9 @@ const TYPE_TO_PREF: Record<string, string> = {
 	match_reminder: 'notify_match_reminder',
 	match_result: 'notify_match_result',
 	match_cancelled: 'notifications_enabled', // always send if global is on
+	// 027: los tres avisos del flujo de invitación. Comparten la preferencia de
+	// "te sumaron a un partido", que es la que más se le parece.
+	match_invitation: 'notify_player_joined',
 }
 
 /**

@@ -12,7 +12,11 @@ export type SkillLevel = 'principiante' | 'intermedio' | 'avanzado'
 export type SportLevels = Partial<Record<SportType, SkillLevel>>
 export type MatchStatus = 'open' | 'full' | 'completed' | 'cancelled'
 export type RequestStatus = 'pending' | 'accepted' | 'rejected'
-export type NotificationType = 'new_match' | 'join_request' | 'request_accepted' | 'request_rejected' | 'match_reminder' | 'match_cancelled' | 'player_joined' | 'match_result'
+// 'match_invitation' cubre los tres avisos del flujo de invitación de la 027: te
+// invitaron, aceptaron y rechazaron. 'player_joined' existe desde la 013 pero recién
+// la 027 lo agregó al enum de la base, y hoy no lo emite nadie: su único trigger vive
+// sobre match_players, que quedó de sólo lectura en la 026.
+export type NotificationType = 'new_match' | 'join_request' | 'request_accepted' | 'request_rejected' | 'match_reminder' | 'match_cancelled' | 'player_joined' | 'match_result' | 'match_invitation'
 /** Resultado de un jugador en un partido (021_match_results.sql). */
 export type MatchOutcome = 'win' | 'loss' | 'draw'
 /**
@@ -244,6 +248,11 @@ export interface Database {
 					// 022: equipo que pidió el jugador. Al aceptarlo entra con ese equipo,
 					// en vez de quedar sin asignar. null si el partido no usa equipos.
 					team_slot: TeamSlot | null
+					// 027: la dirección de la fila. null = la pidió el usuario y la acepta el
+					// creador; con valor = lo invitó el creador y la acepta el invitado. Las
+					// dos RPC de aceptar se niegan a tocar la fila del otro lado, así que
+					// esta columna es lo que decide quién consiente.
+					invited_by: string | null
 					created_at: string
 					updated_at: string
 				}
@@ -254,6 +263,7 @@ export interface Database {
 					status?: RequestStatus
 					message?: string | null
 					team_slot?: TeamSlot | null
+					invited_by?: string | null
 					created_at?: string
 					updated_at?: string
 				}
