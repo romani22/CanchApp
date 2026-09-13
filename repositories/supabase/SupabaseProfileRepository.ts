@@ -62,6 +62,10 @@ export class SupabaseProfileRepository implements IProfileRepository {
 			.from('profiles')
 			.select('id, full_name, avatar_url, sport_levels')
 			.ilike('full_name', `%${likePattern(query)}%`)
+			// Las cuentas borradas no se ofrecen para invitar (028). Es sólo la mitad
+			// cosmética: la que de verdad lo impide es la policy de INSERT de
+			// join_requests, porque este filtro se saltea con un GET directo.
+			.is('deleted_at', null)
 			.limit(normalizeSearchLimit(options?.limit ?? 10))
 
 		if (options?.excludeUserId) {

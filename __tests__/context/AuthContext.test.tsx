@@ -9,8 +9,18 @@ jest.mock('@/services/auth.service', () => ({
     signIn: jest.fn(),
     signUp: jest.fn(),
     signOut: jest.fn(),
+    deleteAccount: jest.fn(),
     resetPassword: jest.fn(),
     onAuthStateChange: jest.fn(),
+  },
+}))
+
+jest.mock('@/services/biometric.service', () => ({
+  biometricService: {
+    purgeLegacyCredentials: jest.fn().mockResolvedValue(undefined),
+    storeRefreshToken: jest.fn().mockResolvedValue(undefined),
+    clearRefreshToken: jest.fn().mockResolvedValue(undefined),
+    disable: jest.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -42,6 +52,8 @@ jest.mock('@/lib/supabase', () => ({
 // Accedemos a los mocks via requireMock para poder configurarlos en cada test
  
 const mockAuthService = (jest.requireMock('@/services/auth.service') as { authService: Record<string, jest.Mock> }).authService
+
+const mockBiometricService = (jest.requireMock('@/services/biometric.service') as { biometricService: Record<string, jest.Mock> }).biometricService
  
 const mockProfilesService = (jest.requireMock('@/services/profiles.service') as { profilesService: Record<string, jest.Mock> }).profilesService
 // (pushNotificationService está mockeado pero no necesitamos configurarlo en estos tests)
@@ -268,8 +280,9 @@ describe('AuthContext', () => {
       expect(result.current.signIn).toBe(mockAuthService.signIn)
     })
 
-    it('expone signOut del authService', async () => {
+    it('signOut delega en el authService y devuelve su resultado', async () => {
       mockAuthService.getSession.mockResolvedValue({ data: { session: null } })
+      mockAuthService.signOut.mockResolvedValue({ error: null })
 
       const { result } = renderHook(() => useAuth(), { wrapper })
 
@@ -277,7 +290,119 @@ describe('AuthContext', () => {
         await new Promise((r) => setTimeout(r, 0))
       })
 
-      expect(result.current.signOut).toBe(mockAuthService.signOut)
+      await act(async () => {
+        await expect(result.current.signOut()).resolves.toEqual({ error: null })
+      })
+
+      expect(mockAuthService.signOut).toHaveBeenCalled()
+    })
+
+    it('signOut borra el token guardado para la huella', async () => {
+      // El logout revoca el refresh token del lado del servidor. Si el guardado
+      // sobrevive, el login muestra el botón de huella, falla al apoyarlo y manda a
+      // escribir la contraseña igual. Borrándolo, el botón no aparece.
+      mockAuthService.getSession.mockResolvedValue({ data: { session: null } })
+      mockAuthService.signOut.mockResolvedValue({ error: null })
+
+      const { result } = renderHook(() => useAuth(), { wrapper })
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+
+      await act(async () => {
+        await result.current.signOut()
+      })
+
+      expect(mockBiometricService.clearRefreshToken).toHaveBeenCalled()
+    })
+
+    it('borra el token aunque el logout devuelva error', async () => {
+      // supabase-js limpia la sesión local igual, así que el usuario queda afuera y
+      // el token guardado no se puede dar por bueno.
+      mockAuthService.getSession.mockResolvedValue({ data: { session: null } })
+      mockAuthService.signOut.mockResolvedValue({ error: new Error('sin red') })
+
+      const { result } = renderHook(() => useAuth(), { wrapper })
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+
+      await act(async () => {
+        await result.current.signOut()
+      })
+
+      expect(mockBiometricService.clearRefreshToken).toHaveBeenCalled()
+    })
+  })
+
+  // ── Eliminar cuenta (028) ──────────────────────────────────────────────────
+  describe('deleteAccount', () => {
+    const conSesion = async () => {
+      mockAuthService.getSession.mockResolvedValue({ data: { session: mockSession } })
+      mockAuthService.signOut.mockResolvedValue({ error: null })
+      mockAuthService.deleteAccount.mockResolvedValue(undefined)
+
+      const { result } = renderHook(() => useAuth(), { wrapper })
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+      return result
+    }
+
+    it('borra la cuenta del usuario de la sesión y cierra todo', async () => {
+      const result = await conSesion()
+
+      await act(async () => {
+        await result.current.deleteAccount()
+      })
+
+      expect(mockAuthService.deleteAccount).toHaveBeenCalledWith('user-1')
+      // La huella apunta a una cuenta que ya no existe: se va la preferencia y el
+      // token, no sólo el token.
+      expect(mockBiometricService.disable).toHaveBeenCalled()
+      expect(mockAuthService.signOut).toHaveBeenCalled()
+    })
+
+    it('no se traga un error del borrado: la cuenta sigue viva', async () => {
+      // Es la diferencia que importa. Si el borrado falló hay que decirlo; dejar a
+      // alguien creyendo que sus datos se borraron es peor que el error.
+      const result = await conSesion()
+      mockAuthService.deleteAccount.mockRejectedValue(new Error('permission denied'))
+
+      await act(async () => {
+        await expect(result.current.deleteAccount()).rejects.toThrow('permission denied')
+      })
+
+      expect(mockAuthService.signOut).not.toHaveBeenCalled()
+    })
+
+    it('sí se traga el error del signOut posterior', async () => {
+      // Al volver del borrado el usuario ya no existe, así que ese signOut contra el
+      // servidor falla siempre. supabase-js limpia la sesión local igual, que es lo
+      // único que necesitamos de él.
+      const result = await conSesion()
+      mockAuthService.signOut.mockRejectedValue(new Error('401'))
+
+      await act(async () => {
+        await expect(result.current.deleteAccount()).resolves.toBeUndefined()
+      })
+    })
+
+    it('sin sesión no hace nada', async () => {
+      mockAuthService.getSession.mockResolvedValue({ data: { session: null } })
+
+      const { result } = renderHook(() => useAuth(), { wrapper })
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+
+      await act(async () => {
+        await expect(result.current.deleteAccount()).rejects.toThrow('No hay sesión')
+      })
+
+      expect(mockAuthService.deleteAccount).not.toHaveBeenCalled()
     })
   })
 

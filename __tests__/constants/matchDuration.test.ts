@@ -1,5 +1,4 @@
-import { SPORT_DURATION_MINUTES, estimateMatchEnd } from '@/constants/matches'
-import { sports } from '@/constants/matches'
+import { SPORT_DURATION_MINUTES, estimateMatchEnd, sports } from '@/constants/matches'
 
 describe('estimateMatchEnd()', () => {
 	// matches.end_time es un TIME que nadie escribe, así que el final del partido se

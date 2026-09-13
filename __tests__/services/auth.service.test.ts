@@ -3,8 +3,17 @@ import { authService } from '@/services/auth.service'
 // ── Supabase mock ────────────────────────────────────────────────────────────
 // jest.mock() es hoisted por Babel antes de las declaraciones de variables,
 // por lo que el mock debe ser auto-contenido. Accedemos al mock via requireMock.
+// El borrado de la cuenta orquesta el avatar y la RPC, así que hace falta el
+// servicio de storage mockeado y un supabase.rpc.
+jest.mock('@/services/storage.service', () => ({
+  storageService: {
+    deleteAvatar: jest.fn().mockResolvedValue(undefined),
+  },
+}))
+
 jest.mock('@/lib/supabase', () => ({
   supabase: {
+    rpc: jest.fn(),
     auth: {
       getSession: jest.fn(),
       signInWithPassword: jest.fn(),
@@ -21,6 +30,10 @@ jest.mock('@/lib/supabase', () => ({
 
  
 const mockAuth = (jest.requireMock('@/lib/supabase') as { supabase: { auth: Record<string, jest.Mock> } }).supabase.auth
+
+const mockRpc = (jest.requireMock('@/lib/supabase') as { supabase: { rpc: jest.Mock } }).supabase.rpc
+
+const mockStorage = (jest.requireMock('@/services/storage.service') as { storageService: Record<string, jest.Mock> }).storageService
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -270,6 +283,62 @@ describe('authService', () => {
       const result = await authService.updatePassword('weak')
 
       expect(result.error).toBe(mockError)
+    })
+  })
+
+  // ── deleteAccount (028) ────────────────────────────────────────────────────
+  describe('deleteAccount', () => {
+    beforeEach(() => {
+      mockStorage.deleteAvatar.mockResolvedValue(undefined)
+      mockRpc.mockResolvedValue({ error: null })
+    })
+
+    it('borra el avatar ANTES de llamar a la RPC', async () => {
+      // El orden no es un detalle: después de la RPC no hay sesión con la que
+      // autorizar el borrado del archivo, así que invertirlo deja la foto para
+      // siempre en el bucket.
+      const orden: string[] = []
+      mockStorage.deleteAvatar.mockImplementation(async () => {
+        orden.push('avatar')
+      })
+      mockRpc.mockImplementation(async () => {
+        orden.push('rpc')
+        return { error: null }
+      })
+
+      await authService.deleteAccount('user-1')
+
+      expect(orden).toEqual(['avatar', 'rpc'])
+      expect(mockStorage.deleteAvatar).toHaveBeenCalledWith('user-1')
+      expect(mockRpc).toHaveBeenCalledWith('delete_my_account')
+    })
+
+    it('borra la cuenta igual si falla el borrado del avatar', async () => {
+      // Borrar la cuenta es un derecho del usuario: no puede quedar bloqueado
+      // porque el storage tuvo un mal momento. El costo es una foto huérfana.
+      mockStorage.deleteAvatar.mockRejectedValue(new Error('sin red'))
+
+      await expect(authService.deleteAccount('user-1')).resolves.toBeUndefined()
+
+      expect(mockRpc).toHaveBeenCalledWith('delete_my_account')
+    })
+
+    it('propaga el error de la RPC: si no se borró, hay que decirlo', async () => {
+      // Dejar a alguien creyendo que borró sus datos cuando siguen ahí es peor
+      // que el error.
+      mockRpc.mockResolvedValue({ error: new Error('permission denied') })
+
+      await expect(authService.deleteAccount('user-1')).rejects.toThrow('permission denied')
+    })
+
+    it('nunca manda el id del usuario a la RPC', async () => {
+      // La función del servidor resuelve a quién borrar con auth.uid(). Si el
+      // cliente empezara a mandar un id, la puerta para borrar cuentas ajenas
+      // quedaría abierta del lado del servidor.
+      await authService.deleteAccount('user-1')
+
+      expect(mockRpc).toHaveBeenCalledWith('delete_my_account')
+      expect(mockRpc.mock.calls[0]).toHaveLength(1)
     })
   })
 })

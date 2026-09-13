@@ -1184,4 +1184,207 @@ $$
     END
 $$;
 
+-- ══════════════════════════════════════════════════════════════════════════
+-- 13. Eliminar mi cuenta (028)
+-- ══════════════════════════════════════════════════════════════════════════
+--
+-- Lo que hay que probar acá no es que borre, sino QUÉ borra. El riesgo de esta
+-- feature no es que falle: es que funcione de más. `matches.creator_id` cascadeaba
+-- desde profiles, así que antes de la 028 el que se iba se llevaba puestos los
+-- partidos que organizó — y con ellos los participantes, resultados y
+-- calificaciones de todos los demás.
+--
+-- Dani organiza dos partidos, uno ya jugado con Beto y uno futuro, y se borra.
+
+INSERT INTO auth.users (id, email, raw_user_meta_data)
+VALUES ('55555555-5555-5555-5555-555555555555', 'dani@test.com', '{"full_name":"Dani"}');
+
+UPDATE profiles SET phone = '+5491100000000', zone = 'Palermo', bio = 'organizo los martes'
+WHERE id = '55555555-5555-5555-5555-555555555555';
+
+INSERT INTO matches (id, creator_id, sport, title, starts_at, venue_name, total_players, players_needed, status)
+VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', '55555555-5555-5555-5555-555555555555',
+        'futbol', 'El de siempre', NOW() - INTERVAL '30 days', 'Cancha Test', 4, 4, 'completed'),
+       ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', '55555555-5555-5555-5555-555555555555',
+        'futbol', 'El del sábado', NOW() + INTERVAL '5 days', 'Cancha Test', 4, 4, 'open');
+
+INSERT INTO match_participants (match_id, user_id, is_creator)
+VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', '55555555-5555-5555-5555-555555555555', true),
+       ('dddddddd-dddd-dddd-dddd-dddddddddddd', '22222222-2222-2222-2222-222222222222', false),
+       ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', '22222222-2222-2222-2222-222222222222', false);
+
+-- Se calificaron mutuamente, los dos con comentario.
+INSERT INTO match_ratings (match_id, rater_id, rated_user_id, rating, comment)
+VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', '55555555-5555-5555-5555-555555555555',
+        '22222222-2222-2222-2222-222222222222', 5, 'juega bien'),
+       ('dddddddd-dddd-dddd-dddd-dddddddddddd', '22222222-2222-2222-2222-222222222222',
+        '55555555-5555-5555-5555-555555555555', 4, 'buen organizador');
+
+INSERT INTO push_tokens (user_id, token, platform)
+VALUES ('55555555-5555-5555-5555-555555555555', 'ExponentPushToken[dani]', 'android');
+
+INSERT INTO notifications (user_id, type, title, body)
+VALUES ('55555555-5555-5555-5555-555555555555', 'new_match', 'Un partido cerca', 'cuerpo');
+
+
+-- ── Sin sesión no se borra nada ────────────────────────────────────────────
+-- La función no recibe parámetros justamente para que "borrame a ese otro" no se
+-- pueda ni expresar. El otro camino a cubrir es el de siempre: sin sesión.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE anon;
+        BEGIN
+            PERFORM delete_my_account();
+            RAISE EXCEPTION 'ROTO: anon pudo llamar a delete_my_account';
+        EXCEPTION
+            WHEN insufficient_privilege OR raise_exception THEN
+                RAISE NOTICE 'OK 13a — sin sesión no se puede borrar ninguna cuenta';
+        END;
+        RESET ROLE;
+    END
+$$;
+
+
+-- ── El borrado ─────────────────────────────────────────────────────────────
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"55555555-5555-5555-5555-555555555555","role":"authenticated"}';
+        PERFORM delete_my_account();
+        RESET ROLE;
+    END
+$$;
+
+
+DO
+$$
+    DECLARE
+        v_perfil profiles;
+        v_n      INTEGER;
+    BEGIN
+        -- Lo que tiene que desaparecer de verdad.
+        SELECT COUNT(*) INTO v_n FROM auth.users WHERE id = '55555555-5555-5555-5555-555555555555';
+        IF v_n <> 0 THEN
+            RAISE EXCEPTION 'ROTO: auth.users sigue existiendo, la cuenta no se borró';
+        END IF;
+        RAISE NOTICE 'OK 13b — auth.users borrado: no puede volver a entrar y el mail queda libre';
+
+        -- Lo que tiene que quedar, pero sin nada personal.
+        SELECT * INTO v_perfil FROM profiles WHERE id = '55555555-5555-5555-5555-555555555555';
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'ROTO: el perfil no sobrevivió, el historial de los demás se rompe';
+        END IF;
+        IF v_perfil.deleted_at IS NULL OR v_perfil.full_name <> 'Usuario eliminado'
+            OR v_perfil.email <> '' OR v_perfil.phone IS NOT NULL
+            OR v_perfil.bio IS NOT NULL OR v_perfil.zone IS NOT NULL
+            OR v_perfil.zone_coordinates IS NOT NULL OR v_perfil.avatar_url IS NOT NULL THEN
+            RAISE EXCEPTION 'ROTO: el perfil quedó con datos personales: %', v_perfil;
+        END IF;
+        RAISE NOTICE 'OK 13c — el perfil quedó como lápida anonimizada';
+
+        -- El corazón de la 028: el partido de hace un mes sigue entero.
+        SELECT COUNT(*) INTO v_n FROM matches WHERE id = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+        IF v_n <> 1 THEN
+            RAISE EXCEPTION 'ROTO: se borró un partido ya jugado (volvió el CASCADE de creator_id)';
+        END IF;
+        SELECT COUNT(*) INTO v_n FROM match_participants
+        WHERE match_id = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+        IF v_n <> 2 THEN
+            RAISE EXCEPTION 'ROTO: se perdieron participantes de un partido ajeno (esperaba 2, hay %)', v_n;
+        END IF;
+        RAISE NOTICE 'OK 13d — el partido jugado y sus participantes sobreviven';
+
+        -- El futuro no: sin organizador nadie lo puede cancelar después.
+        SELECT COUNT(*) INTO v_n FROM matches
+        WHERE id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee' AND status = 'cancelled';
+        IF v_n <> 1 THEN
+            RAISE EXCEPTION 'ROTO: el partido futuro quedó abierto sin organizador';
+        END IF;
+        RAISE NOTICE 'OK 13e — el partido futuro que organizaba quedó cancelado';
+
+        SELECT COUNT(*) INTO v_n FROM notifications
+        WHERE user_id = '22222222-2222-2222-2222-222222222222' AND type = 'match_cancelled';
+        IF v_n < 1 THEN
+            RAISE EXCEPTION 'ROTO: a los participantes no les avisaron de la cancelación';
+        END IF;
+        RAISE NOTICE 'OK 13f — a los participantes les llegó el aviso de cancelación';
+
+        -- Calificaciones: las que recibió se van, las que dio se quedan sin texto.
+        SELECT COUNT(*) INTO v_n FROM match_ratings
+        WHERE rated_user_id = '55555555-5555-5555-5555-555555555555';
+        IF v_n <> 0 THEN
+            RAISE EXCEPTION 'ROTO: quedaron calificaciones sobre una persona borrada';
+        END IF;
+        SELECT COUNT(*) INTO v_n FROM match_ratings
+        WHERE rater_id = '55555555-5555-5555-5555-555555555555'
+          AND rating = 5 AND comment IS NULL;
+        IF v_n <> 1 THEN
+            RAISE EXCEPTION 'ROTO: la calificación que dio se perdió o conservó el comentario';
+        END IF;
+        RAISE NOTICE 'OK 13g — las recibidas se borraron; la que dio conserva el puntaje sin comentario';
+
+        -- Nada que pueda seguir llegándole al teléfono.
+        SELECT COUNT(*) INTO v_n FROM push_tokens WHERE user_id = '55555555-5555-5555-5555-555555555555';
+        IF v_n <> 0 THEN
+            RAISE EXCEPTION 'ROTO: quedaron push tokens de una cuenta borrada';
+        END IF;
+        SELECT COUNT(*) INTO v_n FROM notifications WHERE user_id = '55555555-5555-5555-5555-555555555555';
+        IF v_n <> 0 THEN
+            RAISE EXCEPTION 'ROTO: quedaron notificaciones de una cuenta borrada';
+        END IF;
+        RAISE NOTICE 'OK 13h — tokens de dispositivo y notificaciones borrados';
+    END
+$$;
+
+
+-- ── El cliente no se puede marcar como borrado ─────────────────────────────
+-- Un PATCH sobre deleted_at dejaría a alguien fuera del buscador y sin poder ser
+-- invitado, pero entrando a la app normalmente. Estado imposible de alcanzar por
+-- los caminos buenos, así que tampoco por los malos.
+DO
+$$
+    DECLARE
+        v_marcado TIMESTAMPTZ;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        UPDATE profiles SET deleted_at = NOW() WHERE id = '22222222-2222-2222-2222-222222222222';
+        RESET ROLE;
+
+        SELECT deleted_at INTO v_marcado FROM profiles
+        WHERE id = '22222222-2222-2222-2222-222222222222';
+
+        IF v_marcado IS NOT NULL THEN
+            RAISE EXCEPTION 'ROTO: Beto se marcó como borrado sin borrarse';
+        END IF;
+        RAISE NOTICE 'OK 13j — deleted_at es de sólo lectura para el cliente';
+    END
+$$;
+
+
+-- ── No se invita a una lápida ──────────────────────────────────────────────
+-- El cliente filtra por deleted_at en el buscador, pero eso es cosmético: un POST
+-- directo con la anon key lo saltea. Lo que de verdad lo impide es la policy.
+DO
+$$
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+        BEGIN
+            INSERT INTO join_requests (match_id, user_id, invited_by)
+            VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    '55555555-5555-5555-5555-555555555555',
+                    '11111111-1111-1111-1111-111111111111');
+            RAISE EXCEPTION 'ROTO: se pudo invitar a una cuenta borrada';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RAISE NOTICE 'OK 13i — no se puede invitar a una cuenta borrada';
+        END;
+        RESET ROLE;
+    END
+$$;
+
+
 ROLLBACK;

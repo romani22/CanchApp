@@ -1,9 +1,21 @@
 import { uniqueTopic } from './realtimeTopic'
 import { supabase } from '@/lib/supabase'
-import type { JoinRequest, JoinRequestWithUser, TeamSlot } from '@/types/database.types'
+import type { JoinRequest, JoinRequestWithUser, MatchInvitation, TeamSlot } from '@/types/database.types'
 import type { IJoinRequestRepository } from '../interfaces/IJoinRequestRepository'
 import type { SubscriptionHandle } from '../types'
 
+/**
+ * El embed del perfil va SIEMPRE con la FK explícita: `profiles!join_requests_user_id_fkey`.
+ *
+ * Desde la 027 la tabla tiene dos claves foráneas a `profiles` — `user_id`, el jugador
+ * de la fila, e `invited_by`, el creador que invitó. Con dos caminos posibles PostgREST
+ * no elige: pedir `profiles(...)` a secas devuelve `300 Multiple Choices` (PGRST201) y
+ * la consulta entera falla.
+ *
+ * Es el mismo motivo por el que las consultas de `matches` usan `matches_creator_id_fkey`
+ * (esa tabla tiene `creator_id` y `winner_id`). Acá el que se quiere mostrar es siempre
+ * el jugador, nunca quien invitó.
+ */
 export class SupabaseJoinRequestRepository implements IJoinRequestRepository {
 	async create(matchId: string, userId: string, message?: string, teamSlot?: TeamSlot): Promise<JoinRequest | null> {
 		const { data: participant } = await supabase.from('match_participants').select('id').eq('match_id', matchId).eq('user_id', userId).maybeSingle()
@@ -110,7 +122,7 @@ export class SupabaseJoinRequestRepository implements IJoinRequestRepository {
 	async getForMatch(matchId: string): Promise<JoinRequestWithUser[]> {
 		const { data, error } = await supabase
 			.from('join_requests')
-			.select('*, user:profiles(*), match:matches(*)')
+			.select('*, user:profiles!join_requests_user_id_fkey(*), match:matches(*)')
 			.eq('match_id', matchId)
 			.eq('status', 'pending')
 			.order('created_at', { ascending: false })
@@ -118,10 +130,33 @@ export class SupabaseJoinRequestRepository implements IJoinRequestRepository {
 		return (data as JoinRequestWithUser[]) ?? []
 	}
 
+	/**
+	 * Las invitaciones del partido, en cualquier estado (027).
+	 *
+	 * Sin filtro de status a propósito: una rechazada tiene que seguir viéndose. Y con
+	 * el perfil recortado a lo que se muestra —nombre y avatar— en vez del `profiles(*)`
+	 * que usan las consultas viejas: para pintar una fila de lista no hace falta el
+	 * mail ni el teléfono de nadie.
+	 *
+	 * Sólo la puede usar el creador, y no porque el cliente lo pida: la policy de
+	 * SELECT de join_requests deja ver las filas propias o las del partido que uno
+	 * creó, así que a cualquier otro esto le devuelve vacío.
+	 */
+	async getInvitations(matchId: string): Promise<MatchInvitation[]> {
+		const { data, error } = await supabase
+			.from('join_requests')
+			.select('*, user:profiles!join_requests_user_id_fkey(id, full_name, avatar_url)')
+			.eq('match_id', matchId)
+			.not('invited_by', 'is', null)
+			.order('created_at', { ascending: true })
+		if (error) throw error
+		return (data as MatchInvitation[]) ?? []
+	}
+
 	async getCreatorPending(userId: string): Promise<JoinRequestWithUser[]> {
 		const { data, error } = await supabase
 			.from('join_requests')
-			.select('*, user:profiles(*), match:matches!inner(*)')
+			.select('*, user:profiles!join_requests_user_id_fkey(*), match:matches!inner(*)')
 			.eq('match.creator_id', userId)
 			.eq('status', 'pending')
 			.order('created_at', { ascending: false })
@@ -132,7 +167,7 @@ export class SupabaseJoinRequestRepository implements IJoinRequestRepository {
 	async getUser(userId: string): Promise<JoinRequestWithUser[]> {
 		const { data, error } = await supabase
 			.from('join_requests')
-			.select('*, user:profiles(*), match:matches(*, creator:profiles!matches_creator_id_fkey(*))')
+			.select('*, user:profiles!join_requests_user_id_fkey(*), match:matches(*, creator:profiles!matches_creator_id_fkey(*))')
 			.eq('user_id', userId)
 			.order('created_at', { ascending: false })
 		if (error) throw error

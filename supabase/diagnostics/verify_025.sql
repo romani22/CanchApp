@@ -64,21 +64,34 @@ WITH checks AS (
 
     UNION ALL
 
-    -- Las 9 RPC del cliente tienen que seguir abiertas, o la app se rompe.
+    -- Las 7 RPC del cliente tienen que seguir abiertas, o la app se rompe.
+    --
+    -- Eran nueve hasta la 025. La 026 borró add_multiple_players y remove_match_player
+    -- junto con la feature muerta de match_players, así que salieron de la lista.
+    --
+    -- El CASE con to_regprocedure() no es adorno: has_function_privilege() sobre una
+    -- función que no existe NO devuelve false, corta con error — y como todos los
+    -- chequeos de este archivo son un solo UNION ALL, se lleva puestos a los demás.
+    -- Era exactamente lo que le pasaba a este verificador desde la 026: no reportaba
+    -- una falla, moría entero. Con el CASE, una RPC borrada sale como FALLA.
+    --
+    -- El CASE además es necesario y no cosmético: en un OR, Postgres no garantiza
+    -- que la primera condición se evalúe antes, así que la función podría llamarse
+    -- igual. El CASE sí garantiza que sólo se evalúa la rama elegida.
     SELECT 6,
-           'las 9 RPC del cliente siguen abiertas',
-           COALESCE(string_agg(f.nombre, ', '), '')
+           'las 7 RPC del cliente siguen abiertas',
+           COALESCE(string_agg(f.nombre || CASE WHEN to_regprocedure(f.nombre) IS NULL
+                                                    THEN ' (NO EXISTE)' ELSE '' END, ', '), '')
     FROM (VALUES ('public.accept_join_request(uuid)'),
                  ('public.reject_join_request(uuid)'),
-                 ('public.add_multiple_players(uuid,uuid,jsonb)'),
-                 ('public.remove_match_player(uuid)'),
                  ('public.save_match_result(uuid,integer,integer,jsonb,text,jsonb)'),
                  ('public.delete_match_result(uuid)'),
                  ('public.vote_match_result(uuid,text,text)'),
                  ('public.clear_match_result_vote(uuid)'),
                  ('public.matches_near_location(double precision,double precision,double precision)')
          ) AS f(nombre)
-    WHERE NOT has_function_privilege('authenticated', f.nombre, 'EXECUTE')
+    WHERE CASE WHEN to_regprocedure(f.nombre) IS NULL THEN true
+               ELSE NOT has_function_privilege('authenticated', f.nombre, 'EXECUTE') END
 
     UNION ALL
 

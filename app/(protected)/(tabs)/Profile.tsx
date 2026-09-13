@@ -12,7 +12,7 @@ import { SkillLevel, SportType } from '@/types/database.types'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import HeadViewProfile from '../profile/HeadViewProfile'
 import HeaderProfile from '../profile/HeaderProfile'
@@ -21,7 +21,17 @@ import StatsProfile from '../profile/StatsProfile'
 import ZonaProfile from '../profile/ZonaProfile'
 
 export default function ProfileScreen() {
-	const { profile, signOut, refreshProfile } = useAuth()
+	const { user, profile, signOut, deleteAccount, refreshProfile } = useAuth()
+
+	/**
+	 * ¿Esta cuenta tiene contraseña?
+	 *
+	 * Quien entró sólo con Google no tiene ninguna, así que pedirle la "actual" le
+	 * impediría ponerse una por primera vez. El default es `true` —pedirla— porque es
+	 * el lado seguro: si por algún motivo no se puede saber, mejor pedir de más que
+	 * dejar cambiar la contraseña sin prueba de identidad.
+	 */
+	const hasPasswordIdentity = user?.identities?.some((identity) => identity.provider === 'email') ?? true
 
 	const [isEditing, setIsEditing] = useState(false)
 
@@ -40,6 +50,12 @@ export default function ProfileScreen() {
 	const [saving, setSaving] = useState(false)
 
 	const [passwordModalVisible, setPasswordModalVisible] = useState(false)
+	const [currentPassword, setCurrentPassword] = useState('')
+
+	// Eliminar cuenta (028). Google Play exige que esto exista dentro de la app.
+	const [deleteModalVisible, setDeleteModalVisible] = useState(false)
+	const [deleteProof, setDeleteProof] = useState('')
+	const [deleting, setDeleting] = useState(false)
 	const [newPassword, setNewPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
 	const [changingPassword, setChangingPassword] = useState(false)
@@ -141,7 +157,25 @@ export default function ProfileScreen() {
 		setEditableName(value)
 	}
 
+	/**
+	 * Cambiar la contraseña, pidiendo la actual.
+	 *
+	 * Antes sólo pedía la nueva dos veces. Con eso, cualquiera que agarrara el teléfono
+	 * con la sesión abierta —o el bloqueo por inactividad todavía sin saltar— cambiaba
+	 * la contraseña y dejaba al dueño afuera de su propia cuenta, sin haber tenido que
+	 * probar en ningún momento que era él.
+	 *
+	 * La verificación se hace con un signIn contra la contraseña actual. No es sólo un
+	 * chequeo nuestro: deja la sesión marcada como "recién autenticada", que es lo que
+	 * pide `secure_password_change` del lado del servidor. Sin esto, activar esa opción
+	 * haría fallar el cambio de contraseña con un error de reautenticación.
+	 */
 	const handleChangePassword = async () => {
+		if (hasPasswordIdentity && !currentPassword) {
+			Alert.alert('Falta un dato', 'Ingresá tu contraseña actual.')
+			return
+		}
+
 		if (newPassword !== confirmPassword) {
 			Alert.alert('Error', 'Las contraseñas no coinciden')
 			return
@@ -155,11 +189,27 @@ export default function ProfileScreen() {
 
 		try {
 			setChangingPassword(true)
+
+			if (hasPasswordIdentity) {
+				const email = user?.email
+				if (!email) {
+					Alert.alert('Error', 'No pudimos verificar tu identidad. Cerrá sesión y volvé a entrar.')
+					return
+				}
+
+				const { error: reauthError } = await authService.signIn(email, currentPassword)
+				if (reauthError) {
+					Alert.alert('Contraseña incorrecta', 'La contraseña actual no coincide.')
+					return
+				}
+			}
+
 			const { error } = await authService.updatePassword(newPassword)
 			if (error) throw error
 
 			Alert.alert('Éxito', 'Contraseña actualizada correctamente')
 			setPasswordModalVisible(false)
+			setCurrentPassword('')
 			setNewPassword('')
 			setConfirmPassword('')
 		} catch (error) {
@@ -168,6 +218,72 @@ export default function ProfileScreen() {
 		} finally {
 			setChangingPassword(false)
 		}
+	}
+
+	/**
+	 * Eliminar la cuenta. No tiene vuelta atrás.
+	 *
+	 * Pide una prueba de identidad antes, por el mismo motivo que el cambio de
+	 * contraseña: el teléfono desbloqueado en la mano de otro no puede alcanzar para
+	 * borrarle la cuenta a alguien. Para las cuentas con contraseña, esa prueba es la
+	 * contraseña; para las de Google, que no tienen ninguna, es escribir ELIMINAR —
+	 * más débil, pero al menos descarta el toque accidental.
+	 */
+	const handleDeleteAccount = async () => {
+		if (hasPasswordIdentity) {
+			if (!deleteProof) {
+				Alert.alert('Falta un dato', 'Ingresá tu contraseña para confirmar.')
+				return
+			}
+		} else if (deleteProof.trim().toUpperCase() !== 'ELIMINAR') {
+			Alert.alert('Falta confirmar', 'Escribí ELIMINAR para confirmar.')
+			return
+		}
+
+		try {
+			setDeleting(true)
+
+			if (hasPasswordIdentity) {
+				const email = user?.email
+				if (!email) {
+					Alert.alert('Error', 'No pudimos verificar tu identidad. Cerrá sesión y volvé a entrar.')
+					return
+				}
+
+				const { error: reauthError } = await authService.signIn(email, deleteProof)
+				if (reauthError) {
+					Alert.alert('Contraseña incorrecta', 'La contraseña no coincide.')
+					return
+				}
+			}
+
+			await deleteAccount()
+
+			// No hay navegación explícita: al quedarse sin sesión, el layout de
+			// (protected) redirige solo al login. Forzarla acá sería competir con él.
+			setDeleteModalVisible(false)
+			setDeleteProof('')
+		} catch (error) {
+			// Si falló, la cuenta SIGUE VIVA. Hay que decirlo: dejar a alguien creyendo
+			// que borró sus datos cuando no se borraron es peor que el error.
+			console.error('[Profile] Error eliminando la cuenta:', error)
+			Alert.alert('No se pudo eliminar', 'Tu cuenta sigue activa. Revisá tu conexión e intentá de nuevo.')
+		} finally {
+			setDeleting(false)
+		}
+	}
+
+	const closeDeleteModal = () => {
+		setDeleteModalVisible(false)
+		setDeleteProof('')
+	}
+
+	const closePasswordModal = () => {
+		setPasswordModalVisible(false)
+		// Que no queden contraseñas en el estado de la pantalla después de cerrar.
+		setCurrentPassword('')
+		setNewPassword('')
+		setConfirmPassword('')
 	}
 
 	return (
@@ -225,10 +341,55 @@ export default function ProfileScreen() {
 						<Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
 					</TouchableOpacity>
 				</View>
+
+				{/* Eliminar cuenta. Separado del logout y en texto chico: Google pide que
+				    sea fácil de encontrar, no que compita con las acciones de todos los
+				    días. Lo que lo hace difícil de tocar por accidente es el modal. */}
+				<TouchableOpacity style={localStyles.deleteLink} onPress={() => setDeleteModalVisible(true)}>
+					<Text style={localStyles.deleteLinkText}>Eliminar mi cuenta</Text>
+				</TouchableOpacity>
 			</ScrollView>
 
 			{/* Modal deportes */}
 			<SportModal visible={sportsModalVisible} onClose={() => setSportsModalVisible(false)} onSelectSport={handleSelectSport} editableSports={draftSports(editableLevels)} />
+
+			{/* Modal eliminar cuenta */}
+			{deleteModalVisible && (
+				<Modal visible={deleteModalVisible} animationType='fade' transparent>
+					<View style={styles.modalOverlay}>
+						<View style={styles.passwordModal}>
+							<Text style={styles.modalTitle}>Eliminar mi cuenta</Text>
+
+							{/* Decir qué pasa y qué no. La mitad de abajo importa tanto como la de
+							    arriba: alguien que organiza todas las semanas tiene derecho a saber
+							    que irse no le borra el historial al grupo. */}
+							<Text style={localStyles.deleteWarning}>Esto no se puede deshacer.</Text>
+
+							<View style={localStyles.deleteDetail}>
+								<Text style={localStyles.deleteBullet}>•  Se borra tu cuenta y no vas a poder volver a entrar.</Text>
+								<Text style={localStyles.deleteBullet}>•  Se eliminan tu mail, tu teléfono, tu foto y tu zona.</Text>
+								<Text style={localStyles.deleteBullet}>•  Los partidos que organizaste siguen en el historial de quienes jugaron, pero sin tu nombre.</Text>
+								<Text style={localStyles.deleteBullet}>•  Los partidos futuros que organizabas se cancelan y se les avisa a los jugadores.</Text>
+							</View>
+
+							{hasPasswordIdentity ? (
+								<TextInput placeholder='Tu contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry autoComplete='current-password' value={deleteProof} onChangeText={setDeleteProof} />
+							) : (
+								/* Las cuentas de Google no tienen contraseña que pedir. */
+								<TextInput placeholder='Escribí ELIMINAR' placeholderTextColor='#999' style={styles.modalInput} autoCapitalize='characters' autoCorrect={false} value={deleteProof} onChangeText={setDeleteProof} />
+							)}
+
+							<TouchableOpacity style={[localStyles.deleteConfirmButton, deleting && { opacity: 0.6 }]} onPress={handleDeleteAccount} disabled={deleting}>
+								{deleting ? <ActivityIndicator color='white' /> : <Text style={localStyles.deleteConfirmText}>Eliminar mi cuenta</Text>}
+							</TouchableOpacity>
+
+							<TouchableOpacity style={styles.modalCancel} onPress={closeDeleteModal} disabled={deleting}>
+								<Text style={styles.modalCancelText}>Cancelar</Text>
+							</TouchableOpacity>
+						</View>
+					</View>
+				</Modal>
+			)}
 
 			{/* Modal cambiar contraseña */}
 			{passwordModalVisible && (
@@ -237,15 +398,19 @@ export default function ProfileScreen() {
 						<View style={styles.passwordModal}>
 							<Text style={styles.modalTitle}>Cambiar contraseña</Text>
 
-							<TextInput placeholder='Nueva contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+							{/* Sólo para cuentas con contraseña: quien entró con Google no tiene una
+							    actual que pedirle, y se estaría poniendo la primera. */}
+							{hasPasswordIdentity && <TextInput placeholder='Contraseña actual' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry autoComplete='current-password' value={currentPassword} onChangeText={setCurrentPassword} />}
 
-							<TextInput placeholder='Confirmar contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+							<TextInput placeholder='Nueva contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry autoComplete='new-password' value={newPassword} onChangeText={setNewPassword} />
+
+							<TextInput placeholder='Confirmar contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry autoComplete='new-password' value={confirmPassword} onChangeText={setConfirmPassword} />
 
 							<TouchableOpacity style={[styles.modalButton, changingPassword && { opacity: 0.6 }]} onPress={handleChangePassword} disabled={changingPassword}>
 								{changingPassword ? <ActivityIndicator color='white' /> : <Text style={styles.modalButtonText}>Guardar</Text>}
 							</TouchableOpacity>
 
-							<TouchableOpacity style={styles.modalCancel} onPress={() => setPasswordModalVisible(false)}>
+							<TouchableOpacity style={styles.modalCancel} onPress={closePasswordModal}>
 								<Text style={styles.modalCancelText}>Cancelar</Text>
 							</TouchableOpacity>
 						</View>
@@ -258,3 +423,47 @@ export default function ProfileScreen() {
 		</SafeAreaView>
 	)
 }
+
+// Eliminar cuenta (028). Van acá y no en Profile.styles porque son de esta pantalla
+// y de ninguna otra.
+const localStyles = StyleSheet.create({
+	// Enlace discreto, no botón: tiene que ser fácil de encontrar —Google lo exige—
+	// sin quedar al lado de "Cerrar Sesión" invitando a errarle.
+	deleteLink: {
+		alignItems: 'center',
+		paddingVertical: 18,
+	},
+	deleteLinkText: {
+		color: colors.textSecondaryDark,
+		fontSize: 13,
+		textDecorationLine: 'underline',
+	},
+	deleteWarning: {
+		color: colors.error,
+		fontSize: 14,
+		fontWeight: '600',
+		textAlign: 'center',
+		marginBottom: 10,
+	},
+	deleteDetail: {
+		marginBottom: 16,
+		gap: 6,
+	},
+	deleteBullet: {
+		color: colors.textSecondaryDark,
+		fontSize: 13,
+		lineHeight: 18,
+	},
+	deleteConfirmButton: {
+		backgroundColor: colors.error,
+		borderRadius: 10,
+		paddingVertical: 13,
+		alignItems: 'center',
+		marginTop: 4,
+	},
+	deleteConfirmText: {
+		color: 'white',
+		fontSize: 15,
+		fontWeight: '600',
+	},
+})

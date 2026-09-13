@@ -1,6 +1,6 @@
 import { repositories } from '@/repositories'
 import type { SubscriptionHandle } from '@/repositories/types'
-import type { JoinRequest, JoinRequestWithUser, TeamSlot } from '@/types/database.types'
+import type { JoinRequest, JoinRequestWithUser, MatchInvitation, TeamSlot } from '@/types/database.types'
 
 export const requestsService = {
 	async createJoin(matchId: string, userId: string, message?: string, teamSlot?: TeamSlot) {
@@ -22,6 +22,15 @@ export const requestsService = {
 
 	async getMatch(matchId: string): Promise<JoinRequestWithUser[]> {
 		return repositories.joinRequests.getForMatch(matchId)
+	},
+
+	/**
+	 * Las invitaciones del partido en cualquier estado, para el listado del creador.
+	 * Incluye las rechazadas: enterarse de que alguien no va es el dato que necesita
+	 * para buscar reemplazo.
+	 */
+	async getInvitations(matchId: string): Promise<MatchInvitation[]> {
+		return repositories.joinRequests.getInvitations(matchId)
 	},
 
 	async getCreatorPending(userId: string): Promise<JoinRequestWithUser[]> {

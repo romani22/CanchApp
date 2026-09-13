@@ -1,4 +1,5 @@
 import { authService } from '@/services/auth.service'
+import { biometricService } from '@/services/biometric.service'
 import { profilesService } from '@/services/profiles.service'
 import { pushNotificationService } from '@/services/pushnotifications.service'
 import { Profile } from '@/types/database.types'
@@ -23,7 +24,11 @@ interface AuthState {
 interface AuthContextType extends AuthState {
 	signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>
 	signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+	/** Login con huella: reanuda la sesión desde el refresh token guardado. */
+	signInWithRefreshToken: (refreshToken: string) => Promise<{ error: Error | null }>
 	signOut: () => Promise<{ error: Error | null }>
+	/** Borra la cuenta para siempre y deja la sesión cerrada (028). */
+	deleteAccount: () => Promise<void>
 	resetPassword: (email: string) => Promise<{ error: Error | null }>
 	signInWithGoogle: () => Promise<{ error: Error | null }>
 	updatePassword: (newPassword: string) => Promise<{ error: Error | null }>
@@ -147,9 +152,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	useEffect(() => {
 		let isMounted = true
 
+		// Borrar los restos de la versión que guardaba la contraseña en el dispositivo.
+		// Va acá, sin await y sin depender de que haya sesión, porque el usuario que ya
+		// tenía la huella activada tiene su contraseña guardada AHORA: cambiar el código
+		// no la saca del teléfono, hay que ir a borrarla. Ver biometric.service.ts.
+		void biometricService.purgeLegacyCredentials()
+
 		const initialize = async () => {
 			try {
 				const currentSession = await loadSessionWithRetry()
+
+				// El refresh token rota, así que el guardado para la huella se actualiza en
+				// cada arranque además de en cada evento de sesión. Sin esto, quien no abre
+				// la app por un rato se queda con un token vencido y el botón de huella
+				// falla justo cuando más se usa.
+				void biometricService.storeRefreshToken(currentSession?.refresh_token)
 
 				if (!isMounted) return
 
@@ -196,6 +213,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				if (isMounted) setProfile(null)
 				return
 			}
+
+			// Mantener al día el refresh token guardado para el acceso con huella. Éste es
+			// el único lugar que se entera de TODAS las renovaciones (evento
+			// TOKEN_REFRESHED), así que es el único que puede evitar que el token guardado
+			// quede viejo. No hace nada si la huella no está activada.
+			void biometricService.storeRefreshToken(session.refresh_token)
 
 			// El perfil lo crea el trigger handle_new_user() al insertarse el usuario.
 			// En un alta recién hecha puede no estar visible todavía, así que reintentamos.
@@ -312,6 +335,56 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		}
 	}
 
+	/**
+	 * Cerrar sesión, y de paso olvidar el token guardado para la huella.
+	 *
+	 * El logout de Supabase **revoca el refresh token** del lado del servidor, así que
+	 * el que quedó en el teléfono deja de servir en ese mismo instante. Si no se borra,
+	 * el login muestra el botón de huella, el usuario apoya el dedo, falla, y termina
+	 * escribiendo la contraseña igual — con un error de por medio. Borrándolo, el botón
+	 * directamente no aparece y la pantalla pide mail y contraseña, que es lo único que
+	 * de verdad funciona en ese momento.
+	 *
+	 * `{ scope: 'local' }` no cambiaría nada: revoca el refresh token de la sesión
+	 * actual, que es justo el guardado. No hay forma de desloguearse conservándolo.
+	 *
+	 * La preferencia de huella NO se toca: el usuario ya dijo que la quiere, y el
+	 * listener de arriba vuelve a guardar el token en cuanto ingrese con la contraseña.
+	 * Se rearma sola, sin volver a preguntarle nada.
+	 */
+	const signOutAndForgetBiometricToken = async (): Promise<{ error: Error | null }> => {
+		const result = await authService.signOut()
+		// Después del logout y pase lo que pase: supabase-js limpia la sesión local
+		// aunque la llamada al servidor falle, así que el usuario queda afuera y el
+		// token guardado no se puede dar por bueno.
+		await biometricService.clearRefreshToken()
+		return result
+	}
+
+	/**
+	 * Borrar la cuenta y dejar la app como si nunca hubiera habido sesión (028).
+	 *
+	 * El orden es el único posible: la RPC primero, la limpieza local después. Al
+	 * volver de la RPC el usuario ya no existe del lado del servidor, así que el
+	 * signOut de abajo va a fallar con un 401 — y no importa. supabase-js borra la
+	 * sesión guardada igual, que es todo lo que necesitamos de él, y de ese borrado
+	 * sale el evento SIGNED_OUT que manda al login. Por eso el error se traga: no
+	 * hay nada que el usuario pueda hacer con "no se pudo cerrar la sesión de una
+	 * cuenta que acabás de borrar".
+	 *
+	 * Lo que NO se traga es un error de la RPC: si el borrado falló, la cuenta sigue
+	 * viva y hay que decirlo, no dejar a la persona convencida de que se borró.
+	 */
+	const deleteAccount = async (): Promise<void> => {
+		if (!user) throw new Error('No hay sesión')
+
+		await authService.deleteAccount(user.id)
+
+		// El token de la huella apunta a una cuenta que ya no existe.
+		await biometricService.disable()
+		await authService.signOut().catch(() => undefined)
+	}
+
 	/* ============================
 	   CONTEXT VALUE
 	============================ */
@@ -323,8 +396,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		isLoading,
 		isAuthenticated: !!user, // importante
 		signIn: authService.signIn,
+		signInWithRefreshToken: authService.signInWithRefreshToken,
 		signUp: authService.signUp,
-		signOut: authService.signOut,
+		signOut: signOutAndForgetBiometricToken,
+		deleteAccount,
 		resetPassword: authService.resetPassword,
 		signInWithGoogle: authService.signInWithGoogle,
 		updatePassword: authService.updatePassword,

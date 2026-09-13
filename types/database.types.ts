@@ -62,6 +62,13 @@ export interface Database {
 					onboarding_completed: boolean
 					created_at: string
 					updated_at: string
+					/**
+					 * Con valor, esta fila es una lápida (028): el usuario borró su cuenta,
+					 * ya no existe en auth.users y los datos personales de acá fueron
+					 * limpiados. Sobrevive sólo para que el historial de partidos de otros
+					 * siga teniendo un nombre que mostrar.
+					 */
+					deleted_at: string | null
 				}
 				Insert: {
 					id: string
@@ -90,6 +97,7 @@ export interface Database {
 					onboarding_completed?: boolean
 					created_at?: string
 					updated_at?: string
+					deleted_at?: string | null
 				}
 				Update: {
 					id?: string
@@ -627,6 +635,17 @@ export type MatchResultInput = {
 export type JoinRequestWithUser = JoinRequest & {
 	user: Profile
 	match: Match
+}
+
+/**
+ * Una invitación con lo mínimo para listarla (027).
+ *
+ * A propósito NO reusa JoinRequestWithUser, que trae el perfil completo — o sea mail,
+ * teléfono y coordenadas — para mostrar un nombre y un avatar. El listado de
+ * invitaciones de un partido no necesita nada de eso.
+ */
+export type MatchInvitation = JoinRequest & {
+	user: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> | null
 }
 
 export type NotificationWithData = Notification & {

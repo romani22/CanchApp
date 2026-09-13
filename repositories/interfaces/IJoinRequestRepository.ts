@@ -1,4 +1,4 @@
-import type { JoinRequest, JoinRequestWithUser, TeamSlot } from '@/types/database.types'
+import type { JoinRequest, JoinRequestWithUser, MatchInvitation, TeamSlot } from '@/types/database.types'
 import type { SubscriptionHandle } from '../types'
 
 export interface IJoinRequestRepository {
@@ -19,6 +19,15 @@ export interface IJoinRequestRepository {
 	/** La solicitud o invitación del usuario en ese partido, en cualquier estado, o null. */
 	getMine(matchId: string, userId: string): Promise<JoinRequest | null>
 	getForMatch(matchId: string): Promise<JoinRequestWithUser[]>
+	/**
+	 * Las invitaciones de un partido, en CUALQUIER estado (027).
+	 *
+	 * Aparte de getForMatch, que sólo trae pendientes: una invitación rechazada tiene
+	 * que quedar a la vista del creador, porque enterarse de que alguien no va es
+	 * justo el dato que necesita para buscar reemplazo. Con el filtro de 'pending'
+	 * desaparecía sin dejar rastro.
+	 */
+	getInvitations(matchId: string): Promise<MatchInvitation[]>
 	getCreatorPending(userId: string): Promise<JoinRequestWithUser[]>
 	getUser(userId: string): Promise<JoinRequestWithUser[]>
 	accept(requestId: string): Promise<void>

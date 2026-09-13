@@ -30,9 +30,12 @@ Lo que queda son **cinco caminos que reabren, por la puerta de al lado, justo lo
 | A6 | ✅ Corregido y **en la calle** (build del 2026-08-13): se fue el `.or()` interpolado y el mail dejó de buscarse por subcadena. |
 | M9 | ✅ Corregido en `app.json` (`blockedPermissions`) y buildeado. Falta confirmarlo con `adb shell dumpsys package com.romani22.canchapp \| findstr permission` — el manifest es generado, así que sólo vale si el build corrió `prebuild`. |
 | A4 | ✅ Corregido en `027_match_invitations.sql`: invitación + consentimiento del invitado. **Falta aplicar la migración en la base hosteada y hacer un build nuevo** (el cambio es de base y de cliente). |
-| M1, M4-M8, M10, B1-B9 | Abiertos. |
+| M6 | ✅ Corregido: el login con huella ya no guarda la contraseña, guarda el refresh token. Incluye el borrado de las credenciales viejas del dispositivo. **Falta el build.** |
+| M8 | ✅ Corregido en `config.toml` y **verificado contra la API local**. **Falta replicarlo en el Dashboard**, que es donde se aplica de verdad — y la confirmación de mail necesita SMTP propio. |
+| M5 | ⚠️ Parcial: `allowBackup: false` en `app.json` (falta el build). Queda pendiente mover la sesión de AsyncStorage a SecureStore. |
+| M1, M4, M7, M10, B1-B9 | Abiertos. |
 
-Todo lo cerrado está validado: `supabase db reset` reaplica las 26 migraciones sin error, los tres smoke tests pasan completos (33 + 20 + 8 aserciones), `verify_026.sql` da 15/15 tanto local como en producción, `tsc` limpio, `eslint` limpio y **276 tests** del cliente en verde.
+Todo lo cerrado está validado contra la base local (2026-09-12): `supabase db reset` reaplica las 28 migraciones sin error, `smoke_rls_security.sql` da 54/54, los cuatro verificadores dan 13/13, 15/15, 13/13 y 9/9, `tsc` limpio, `eslint` limpio y **315 tests** del cliente en verde.
 
 | # | Severidad | Hallazgo |
 |---|-----------|----------|
@@ -288,6 +291,8 @@ Conviene revisar la regla de forma general: **ningún `.or()` / `.filter()` cons
 
 Ya está reconocido como pendiente en el comentario de 025 (bloque 3), y sigue abierto. `profiles` incluye `email`, `phone`, `zone`, `zone_coordinates`. Con una cuenta gratis se baja el padrón entero: mail, teléfono y coordenadas de la zona de cada persona. El buscador de jugadores además consulta `email.ilike`, lo que lo vuelve una herramienta de cosecha de mails con búsquedas de 2 caracteres.
 
+Ya hay un ejemplo del patrón a seguir en el repo: `SupabaseJoinRequestRepository.getInvitations()` (027) devuelve `user:profiles(id, full_name, avatar_url)` en vez del `profiles(*)` que usan las consultas viejas, con el tipo `MatchInvitation` acompañando. Para pintar una fila de lista no hace falta el mail ni el teléfono de nadie, y así se ve.
+
 **Arreglo** (requiere tocar el cliente, que es por lo que quedó postergado):
 
 1. Crear una vista `public_profiles` con `security_invoker = true` y **sólo** las columnas públicas: `id, full_name, avatar_url, sport_levels, skill_level, zone, rating, rating_count, elo_rating, total_matches, total_wins`. `GRANT SELECT` a `authenticated`.
@@ -377,7 +382,13 @@ format('Hay un partido de %s en %s', NEW.sport, NEW.venue_name)
 
 ---
 
-## M5 — La sesión vive en AsyncStorage, y el backup de Android está habilitado
+## M5 — La sesión vive en AsyncStorage, y el backup de Android está habilitado ⚠️ PARCIAL
+
+> **Hecho:** `"allowBackup": false` en `app.json`, que cierra la extracción por `adb backup` — el camino que no necesita root. Falta el build para que tenga efecto (el manifest es generado).
+>
+> **Pendiente:** mover la sesión de AsyncStorage a SecureStore. Sigue siendo extraíble en un dispositivo rooteado. Ojo con el límite de 2048 bytes por ítem de SecureStore: el JSON de sesión de Supabase puede pasarlo, así que hay que partirlo en chunks o guardar sólo el refresh token, y hace falta una migración silenciosa (leer de AsyncStorage la primera vez, escribir en SecureStore, borrar el original) para no desloguear a todo el mundo en el update.
+>
+> Efecto colateral de `allowBackup: false` que conviene saber: al cambiar de teléfono o restaurar un backup, los usuarios van a tener que volver a iniciar sesión.
 
 **Dónde:** `lib/supabase.ts:12-19` y `android/app/src/main/AndroidManifest.xml` (`android:allowBackup="true"`)
 
@@ -399,7 +410,17 @@ El proyecto ya tiene `expo-secure-store` instalado y en `plugins` — sólo no s
 
 ---
 
-## M6 — El login biométrico guarda la contraseña en claro
+## M6 — El login biométrico guarda la contraseña en claro ✅ CORREGIDO
+
+> **Estado:** ahora se guarda el **refresh token** de la sesión en vez de la contraseña. Mismo comportamiento para el usuario —apoya el dedo y entra— con un secreto que sí se puede revocar (cerrar sesión lo invalida), que sólo sirve para esta app y que no revela la contraseña. El login usa `refreshSession({ refresh_token })`.
+>
+> **La parte que no era obvia:** cambiar el código no saca la contraseña de los teléfonos donde ya está. `biometricService.purgeLegacyCredentials()` corre en cada arranque, borra la clave vieja y desactiva la huella, para que el usuario entre una vez con contraseña y la reactive. Sin eso, el arreglo sólo valía para instalaciones nuevas.
+>
+> **Y lo que se decidió NO hacer:** `SecureStore` permite atar el ítem a la biometría con `requireAuthentication: true`, que sería criptográficamente más fuerte que el chequeo en JS. No se usa porque en Android esa opción exige autenticación para **usar** la clave, y eso incluye escribir: como el refresh token rota en cada renovación, habría que reescribirlo cada hora y cada reescritura pediría la huella en medio de cualquier cosa. La consecuencia hay que tenerla clara — en un dispositivo rooteado el gate se puede saltear y leer el token — y es justamente por eso que importa tanto **qué** se guarda.
+>
+> El refresh token se mantiene al día desde `AuthContext`, que es el único lugar que se entera de todas las renovaciones. Cubierto por 21 tests en `__tests__/services/biometric.service.test.ts`, incluido uno que verifica que ningún camino escriba una contraseña.
+>
+> **El límite de lo que el refresh token puede dar.** Cerrar sesión lo revoca — es la contracara de haber elegido un secreto revocable, y `{ scope: 'local' }` tampoco lo salva: revoca el de la sesión actual, que es el guardado. O sea que "cerrar sesión y volver a entrar con la huella" no es alcanzable sin dejar viva una sesión que el usuario dio por cerrada. La app no lo disimula: el `signOut` borra el token y el botón de huella se muestra **sólo si hay uno guardado** (`hasStoredToken()`, distinto de la preferencia), así que sin token la pantalla pide mail y contraseña en vez de fallar al apoyar el dedo. La preferencia sobrevive y el token se rearma solo en el próximo ingreso. Donde la huella sí entra es en el caso que la motivó: la app se abre y la sesión local no está, pero el token sigue siendo válido.
 
 **Dónde:** `hooks/useBiometricAuth.ts:20-23`, usado desde `app/(auth)/Login.tsx:60-70`
 
@@ -438,7 +459,20 @@ Aparte, `additional_redirect_urls = ["https://127.0.0.1:3000", "exp://*/*"]` tie
 
 ---
 
-## M8 — Política de auth débil
+## M8 — Política de auth débil ✅ CORREGIDO EN EL REPO (falta el Dashboard)
+
+> **Estado:** `config.toml` quedó con `minimum_password_length = 8`, `password_requirements = "lower_upper_letters_digits"` (espejo exacto de `authService.validatePassword`), `enable_confirmations = true` y `secure_password_change = true`. Verificado contra la API de auth local, que es el camino que usa un atacante salteando el cliente:
+>
+> | Prueba | Resultado |
+> |---|---|
+> | `signup` con `123456` | `422 weak_password` |
+> | `signup` con `abcd1234` (sin mayúscula) | `422 weak_password` |
+> | `signup` con `Abcd1234` | `200`, con confirmación pendiente |
+> | `login` sin confirmar el mail | `400 email_not_confirmed` |
+>
+> **`secure_password_change` obligó a arreglar el cambio de contraseña primero.** El modal de `Profile.tsx` pedía sólo la nueva dos veces: cualquiera con el teléfono en la mano y la sesión abierta cambiaba la contraseña y dejaba al dueño afuera, sin probar en ningún momento que era él. Ahora pide la actual y la verifica con un `signIn` — que además deja la sesión marcada como recién autenticada, que es lo que el flag exige del lado del servidor. A las cuentas de Google no se les pide (no tienen contraseña actual que dar).
+>
+> **Falta el Dashboard**, que es donde se aplica de verdad, y con dos cuidados: la confirmación de mail necesita un SMTP propio configurado, y conviene contar antes cuántas cuentas quedarían sin poder entrar.
 
 **Dónde:** `supabase/config.toml:169-178, 204-215`
 

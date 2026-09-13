@@ -10,7 +10,7 @@ import { matchesService } from '@/services/matches.service'
 import { matchParticipantsService } from '@/services/matchParticipants.service'
 import { requestsService } from '@/services/requests.service'
 import { colors } from '@/theme/colors'
-import { JoinRequest, JoinRequestWithUser, MatchResultVote, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
+import { JoinRequest, MatchInvitation, MatchResultVote, MatchResultWithPlayers, MatchWithCreator, TeamMode, TeamSlot } from '@/types/database.types'
 import { getSportImage } from '@/utils/sportImage'
 import { Ionicons } from '@expo/vector-icons'
 import { addHours, format, isAfter, isPast, parseISO } from 'date-fns'
@@ -29,10 +29,12 @@ export default function MatchDetail() {
 	const [myRequest, setMyRequest] = useState<JoinRequest | null>(null)
 	// Solicitudes pendientes que tiene que responder el creador.
 	const [pendingCount, setPendingCount] = useState(0)
-	// Invitaciones que mandó el creador y todavía nadie respondió (027). Van
-	// separadas de pendingCount a propósito: son el caso inverso — acá el que tiene
-	// que responder es el invitado, no el creador.
-	const [pendingInvites, setPendingInvites] = useState<JoinRequestWithUser[]>([])
+	// Invitaciones que mandó el creador, en CUALQUIER estado (027). Van separadas de
+	// pendingCount a propósito: son el caso inverso — acá el que tiene que responder es
+	// el invitado, no el creador. Y se traen las rechazadas también: que alguien no
+	// venga es justo el dato que el creador necesita para buscar reemplazo, y con el
+	// filtro de 'pending' desaparecía sin dejar rastro.
+	const [invitations, setInvitations] = useState<MatchInvitation[]>([])
 	const [loading, setLoading] = useState(true)
 	const [notFound, setNotFound] = useState(false)
 	const [actionLoading, setActionLoading] = useState(false)
@@ -70,12 +72,25 @@ export default function MatchDetail() {
 			// la suya sigue pendiente. Son consultas distintas: la lista completa del
 			// partido sólo la puede leer el creador (RLS de join_requests).
 			if (data.creator_id === user.id) {
-				const pending = await requestsService.getMatch(id as string).catch(() => [])
-				// La misma consulta trae las dos direcciones desde la 027, y mezclarlas
-				// haría que el banner de "quieren unirse" contara a la gente que el creador
-				// invitó él mismo.
+				// Los .catch() dejan la pantalla en pie si una de las dos listas falla, pero
+				// se loguea el error: sin eso, una consulta rota se ve exactamente igual que
+				// un partido sin solicitudes — cero filas y ningún aviso. Fue justo lo que
+				// escondió la ambigüedad de FK que la 027 metió en el embed de profiles.
+				const [pending, invites] = await Promise.all([
+					requestsService.getMatch(id as string).catch((err) => {
+						console.error('[MatchDetail] no se pudieron leer las solicitudes:', err)
+						return []
+					}),
+					requestsService.getInvitations(id as string).catch((err) => {
+						console.error('[MatchDetail] no se pudieron leer las invitaciones:', err)
+						return []
+					}),
+				])
+				// getMatch trae las dos direcciones mezcladas desde la 027, así que hay que
+				// descontar las invitaciones: si no, el banner de "quieren unirse" cuenta a
+				// la gente que el creador invitó él mismo.
 				setPendingCount(pending.filter((r) => !r.invited_by).length)
-				setPendingInvites(pending.filter((r) => !!r.invited_by))
+				setInvitations(invites)
 			} else {
 				const mine = await requestsService.getMine(id as string, user.id).catch(() => null)
 				setMyRequest(mine)
@@ -125,6 +140,11 @@ export default function MatchDetail() {
 	// Un "rechazado" de una invitación es el propio usuario diciendo que no: no
 	// corresponde mostrarle "el creador rechazó tu solicitud" ni ofrecerle reintentar.
 	const wasRejected = myRequest?.status === 'rejected' && !isInvitation
+	// Las que esperan respuesta y las que ya dijeron que no. Las aceptadas no se
+	// listan: esa gente ya está en la lista de participantes, y repetirla sólo haría
+	// dudar de si entró o no.
+	const pendingInvites = invitations.filter((i) => i.status === 'pending')
+	const rejectedInvites = invitations.filter((i) => i.status === 'rejected')
 
 	// Los recordatorios (partido que arranca, resultado que falta) ya no se programan
 	// acá: los encola el servidor cada 5 minutos y llegan como cualquier otra
@@ -183,16 +203,23 @@ export default function MatchDetail() {
 		}
 	}
 
-	// El creador da de baja una invitación que mandó. No hay aviso al invitado: la
-	// notificación que ya le llegó lo lleva al partido, y ahí se encuentra con el botón
-	// de solicitar entrar como cualquier otro. Si alguna vez molesta, el lugar del
-	// aviso es un trigger de DELETE, no esta función.
-	const handleCancelInvitation = (invitation: JoinRequestWithUser) => {
+	// El creador da de baja una fila de invitación. Es la misma operación para los dos
+	// casos —un DELETE que la policy de la 027 le permite sólo sobre las invitaciones
+	// que mandó él— pero se pregunta distinto, porque para el usuario son dos cosas
+	// distintas: cancelar una invitación que está esperando respuesta, o limpiar el
+	// registro de una que ya fue rechazada.
+	//
+	// No hay aviso al invitado al cancelar: la notificación que ya le llegó lo lleva al
+	// partido, y ahí se encuentra con el botón de solicitar entrar como cualquier otro.
+	// Si alguna vez molesta, el lugar del aviso es un trigger de DELETE, no esta función.
+	const handleRemoveInvitation = (invitation: MatchInvitation) => {
 		const nombre = invitation.user?.full_name ?? 'este jugador'
-		Alert.alert('Cancelar la invitación', `¿Cancelar la invitación a ${nombre}?`, [
+		const rechazada = invitation.status === 'rejected'
+
+		Alert.alert(rechazada ? 'Quitar del listado' : 'Cancelar la invitación', rechazada ? `${nombre} ya rechazó la invitación. ¿Sacarlo del listado?` : `¿Cancelar la invitación a ${nombre}?`, [
 			{ text: 'Volver', style: 'cancel' },
 			{
-				text: 'Cancelar invitación',
+				text: rechazada ? 'Quitar' : 'Cancelar invitación',
 				style: 'destructive',
 				onPress: async () => {
 					try {
@@ -200,8 +227,8 @@ export default function MatchDetail() {
 						await requestsService.cancel(invitation.id)
 						await loadMatch()
 					} catch (err) {
-						console.error('[MatchDetail] Error cancelando la invitación:', err)
-						Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cancelar la invitación.')
+						console.error('[MatchDetail] Error dando de baja la invitación:', err)
+						Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo dar de baja la invitación.')
 					} finally {
 						setActionLoading(false)
 					}
@@ -459,19 +486,41 @@ export default function MatchDetail() {
 					{/* Invitaciones que el creador mandó y nadie respondió todavía (027).
 					    Separadas del banner de arriba porque acá el que tiene que mover
 					    ficha es el invitado: al creador sólo le corresponde esperar. */}
-					{isCreator && pendingInvites.length > 0 && !isCancelled && (
-						<View style={localStyles.invitesPendingBox}>
-							<View style={localStyles.invitesPendingHeader}>
-								<Ionicons name='hourglass-outline' size={18} color={colors.warning} />
-								<Text style={localStyles.invitesPendingTitle}>{pendingInvites.length === 1 ? 'Invitación sin responder' : `${pendingInvites.length} invitaciones sin responder`}</Text>
+					{isCreator && invitations.length > 0 && !isCancelled && (
+						<View style={localStyles.invitesBox}>
+							<View style={localStyles.invitesHeader}>
+								<Ionicons name='mail-outline' size={18} color={colors.textSecondaryDark} />
+								<Text style={localStyles.invitesTitle}>Invitaciones</Text>
+								{/* El conteo va en el encabezado y no adentro de cada fila: lo que el
+								    creador necesita de un vistazo es cuántos le faltan. */}
+								<Text style={localStyles.invitesCount}>
+									{pendingInvites.length} {pendingInvites.length === 1 ? 'pendiente' : 'pendientes'}
+									{rejectedInvites.length > 0 ? ` · ${rejectedInvites.length} ${rejectedInvites.length === 1 ? 'rechazada' : 'rechazadas'}` : ''}
+								</Text>
 							</View>
+
 							{pendingInvites.map((invitation) => (
-								<View key={invitation.id} style={localStyles.invitesPendingRow}>
-									<Text style={localStyles.invitesPendingName} numberOfLines={1}>
+								<View key={invitation.id} style={localStyles.inviteRow}>
+									<Ionicons name='hourglass-outline' size={15} color={colors.warning} />
+									<Text style={localStyles.inviteName} numberOfLines={1}>
 										{invitation.user?.full_name ?? 'Jugador'}
 									</Text>
-									<TouchableOpacity onPress={() => handleCancelInvitation(invitation)} disabled={actionLoading} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-										<Ionicons name='close-circle' size={22} color={colors.error} />
+									<Text style={[localStyles.inviteBadge, { color: colors.warning }]}>esperando</Text>
+									<TouchableOpacity onPress={() => handleRemoveInvitation(invitation)} disabled={actionLoading} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+										<Ionicons name='close-circle' size={20} color={colors.error} />
+									</TouchableOpacity>
+								</View>
+							))}
+
+							{rejectedInvites.map((invitation) => (
+								<View key={invitation.id} style={localStyles.inviteRow}>
+									<Ionicons name='close-circle-outline' size={15} color={colors.error} />
+									<Text style={[localStyles.inviteName, localStyles.inviteNameRejected]} numberOfLines={1}>
+										{invitation.user?.full_name ?? 'Jugador'}
+									</Text>
+									<Text style={[localStyles.inviteBadge, { color: colors.error }]}>rechazó</Text>
+									<TouchableOpacity onPress={() => handleRemoveInvitation(invitation)} disabled={actionLoading} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+										<Ionicons name='close-circle' size={20} color={colors.textSecondaryDark} />
 									</TouchableOpacity>
 								</View>
 							))}
@@ -723,39 +772,53 @@ const localStyles = StyleSheet.create({
 		fontSize: 13,
 		flex: 1,
 	},
-	// Invitaciones que mandó el creador y nadie respondió. Es una lista y no una línea
-	// de texto porque cada una se puede cancelar por separado.
-	invitesPendingBox: {
-		backgroundColor: `${colors.warning}15`,
+	// Listado de invitaciones del creador (027). Neutro en vez de amarillo: mezcla
+	// pendientes y rechazadas, y el color lo pone cada fila. Pintar la caja entera de
+	// alerta haría que un partido con una sola invitación rechazada —dato informativo,
+	// no problema— se viera como si algo estuviera mal.
+	invitesBox: {
+		backgroundColor: colors.surfaceDark,
 		borderWidth: 1,
-		borderColor: `${colors.warning}40`,
+		borderColor: colors.borderDark,
 		borderRadius: 12,
 		paddingHorizontal: 14,
 		paddingVertical: 10,
 		marginBottom: 12,
-		gap: 6,
+		gap: 8,
 	},
-	invitesPendingHeader: {
+	invitesHeader: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		gap: 8,
 	},
-	invitesPendingTitle: {
-		color: colors.warning,
+	invitesTitle: {
+		color: colors.textPrimaryDark,
 		fontSize: 13,
 		fontWeight: '600',
-		flex: 1,
 	},
-	invitesPendingRow: {
+	invitesCount: {
+		color: colors.textSecondaryDark,
+		fontSize: 12,
+		flex: 1,
+		textAlign: 'right',
+	},
+	inviteRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		gap: 10,
-		paddingLeft: 26,
+		gap: 8,
 	},
-	invitesPendingName: {
-		color: colors.textSecondaryDark,
+	inviteName: {
+		color: colors.textPrimaryDark,
 		fontSize: 13,
 		flex: 1,
+	},
+	inviteNameRejected: {
+		color: colors.textSecondaryDark,
+		textDecorationLine: 'line-through',
+	},
+	inviteBadge: {
+		fontSize: 11,
+		fontWeight: '600',
 	},
 	// Invitación pendiente (027). Es el único banner con acciones adentro, así que va
 	// en columna en vez de en fila: los dos botones necesitan el ancho completo para
