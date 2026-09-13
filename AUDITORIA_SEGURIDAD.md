@@ -35,7 +35,7 @@ Lo que queda son **cinco caminos que reabren, por la puerta de al lado, justo lo
 | M5 | ⚠️ Parcial: `allowBackup: false` en `app.json` (falta el build). Queda pendiente mover la sesión de AsyncStorage a SecureStore. |
 | M1, M4, M7, M10, B1-B9 | Abiertos. |
 
-Todo lo cerrado está validado contra la base local (2026-09-12): `supabase db reset` reaplica las 28 migraciones sin error, `smoke_rls_security.sql` da 54/54, los cuatro verificadores dan 13/13, 15/15, 13/13 y 9/9, `tsc` limpio, `eslint` limpio y **315 tests** del cliente en verde.
+Todo lo cerrado está validado contra la base local (2026-09-13): `supabase db reset` reaplica las 29 migraciones sin error, `smoke_rls_security.sql` da 56/56, los cuatro verificadores dan 13/13, 15/15, 13/13 y 11/11, `tsc` limpio, `eslint` limpio y **315 tests** del cliente en verde.
 
 | # | Severidad | Hallazgo |
 |---|-----------|----------|

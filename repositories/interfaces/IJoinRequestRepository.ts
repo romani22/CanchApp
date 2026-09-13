@@ -20,12 +20,9 @@ export interface IJoinRequestRepository {
 	getMine(matchId: string, userId: string): Promise<JoinRequest | null>
 	getForMatch(matchId: string): Promise<JoinRequestWithUser[]>
 	/**
-	 * Las invitaciones de un partido, en CUALQUIER estado (027).
-	 *
-	 * Aparte de getForMatch, que sólo trae pendientes: una invitación rechazada tiene
-	 * que quedar a la vista del creador, porque enterarse de que alguien no va es
-	 * justo el dato que necesita para buscar reemplazo. Con el filtro de 'pending'
-	 * desaparecía sin dejar rastro.
+	 * Las invitaciones del partido en cualquier estado, a diferencia de getForMatch
+	 * que sólo trae pendientes. Las rechazadas le sirven al creador para buscar
+	 * reemplazo.
 	 */
 	getInvitations(matchId: string): Promise<MatchInvitation[]>
 	getCreatorPending(userId: string): Promise<JoinRequestWithUser[]>

@@ -152,20 +152,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	useEffect(() => {
 		let isMounted = true
 
-		// Borrar los restos de la versión que guardaba la contraseña en el dispositivo.
-		// Va acá, sin await y sin depender de que haya sesión, porque el usuario que ya
-		// tenía la huella activada tiene su contraseña guardada AHORA: cambiar el código
-		// no la saca del teléfono, hay que ir a borrarla. Ver biometric.service.ts.
+		// Sin await y sin depender de que haya sesión: la contraseña que dejó la versión
+		// anterior está en el teléfono ahora mismo.
 		void biometricService.purgeLegacyCredentials()
 
 		const initialize = async () => {
 			try {
 				const currentSession = await loadSessionWithRetry()
 
-				// El refresh token rota, así que el guardado para la huella se actualiza en
-				// cada arranque además de en cada evento de sesión. Sin esto, quien no abre
-				// la app por un rato se queda con un token vencido y el botón de huella
-				// falla justo cuando más se usa.
 				void biometricService.storeRefreshToken(currentSession?.refresh_token)
 
 				if (!isMounted) return
@@ -214,10 +208,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				return
 			}
 
-			// Mantener al día el refresh token guardado para el acceso con huella. Éste es
-			// el único lugar que se entera de TODAS las renovaciones (evento
-			// TOKEN_REFRESHED), así que es el único que puede evitar que el token guardado
-			// quede viejo. No hace nada si la huella no está activada.
+			// Único lugar que ve TODAS las renovaciones, y el token rota.
 			void biometricService.storeRefreshToken(session.refresh_token)
 
 			// El perfil lo crea el trigger handle_new_user() al insertarse el usuario.
@@ -336,21 +327,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	}
 
 	/**
-	 * Cerrar sesión, y de paso olvidar el token guardado para la huella.
+	 * El logout revoca el refresh token del lado del servidor, así que el guardado
+	 * para la huella deja de servir y se borra: si no, el login mostraría un botón que
+	 * falla al apoyar el dedo. `{ scope: 'local' }` no ayudaría, revoca el mismo token.
 	 *
-	 * El logout de Supabase **revoca el refresh token** del lado del servidor, así que
-	 * el que quedó en el teléfono deja de servir en ese mismo instante. Si no se borra,
-	 * el login muestra el botón de huella, el usuario apoya el dedo, falla, y termina
-	 * escribiendo la contraseña igual — con un error de por medio. Borrándolo, el botón
-	 * directamente no aparece y la pantalla pide mail y contraseña, que es lo único que
-	 * de verdad funciona en ese momento.
-	 *
-	 * `{ scope: 'local' }` no cambiaría nada: revoca el refresh token de la sesión
-	 * actual, que es justo el guardado. No hay forma de desloguearse conservándolo.
-	 *
-	 * La preferencia de huella NO se toca: el usuario ya dijo que la quiere, y el
-	 * listener de arriba vuelve a guardar el token en cuanto ingrese con la contraseña.
-	 * Se rearma sola, sin volver a preguntarle nada.
+	 * La preferencia queda, así que el próximo ingreso con contraseña la rearma sola.
 	 */
 	const signOutAndForgetBiometricToken = async (): Promise<{ error: Error | null }> => {
 		const result = await authService.signOut()
@@ -362,18 +343,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	}
 
 	/**
-	 * Borrar la cuenta y dejar la app como si nunca hubiera habido sesión (028).
+	 * Al volver de la RPC el usuario ya no existe, así que el signOut falla con 401 y
+	 * ese error se ignora: supabase-js limpia la sesión local igual y de ahí sale el
+	 * SIGNED_OUT que lleva al login.
 	 *
-	 * El orden es el único posible: la RPC primero, la limpieza local después. Al
-	 * volver de la RPC el usuario ya no existe del lado del servidor, así que el
-	 * signOut de abajo va a fallar con un 401 — y no importa. supabase-js borra la
-	 * sesión guardada igual, que es todo lo que necesitamos de él, y de ese borrado
-	 * sale el evento SIGNED_OUT que manda al login. Por eso el error se traga: no
-	 * hay nada que el usuario pueda hacer con "no se pudo cerrar la sesión de una
-	 * cuenta que acabás de borrar".
-	 *
-	 * Lo que NO se traga es un error de la RPC: si el borrado falló, la cuenta sigue
-	 * viva y hay que decirlo, no dejar a la persona convencida de que se borró.
+	 * Un error de la RPC sí se propaga: la cuenta sigue viva y hay que decirlo.
 	 */
 	const deleteAccount = async (): Promise<void> => {
 		if (!user) throw new Error('No hay sesión')

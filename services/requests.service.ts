@@ -24,11 +24,7 @@ export const requestsService = {
 		return repositories.joinRequests.getForMatch(matchId)
 	},
 
-	/**
-	 * Las invitaciones del partido en cualquier estado, para el listado del creador.
-	 * Incluye las rechazadas: enterarse de que alguien no va es el dato que necesita
-	 * para buscar reemplazo.
-	 */
+	/** Incluye las rechazadas: el creador necesita saber quién no va. */
 	async getInvitations(matchId: string): Promise<MatchInvitation[]> {
 		return repositories.joinRequests.getInvitations(matchId)
 	},

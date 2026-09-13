@@ -5,16 +5,9 @@ import type { IJoinRequestRepository } from '../interfaces/IJoinRequestRepositor
 import type { SubscriptionHandle } from '../types'
 
 /**
- * El embed del perfil va SIEMPRE con la FK explícita: `profiles!join_requests_user_id_fkey`.
- *
- * Desde la 027 la tabla tiene dos claves foráneas a `profiles` — `user_id`, el jugador
- * de la fila, e `invited_by`, el creador que invitó. Con dos caminos posibles PostgREST
- * no elige: pedir `profiles(...)` a secas devuelve `300 Multiple Choices` (PGRST201) y
- * la consulta entera falla.
- *
- * Es el mismo motivo por el que las consultas de `matches` usan `matches_creator_id_fkey`
- * (esa tabla tiene `creator_id` y `winner_id`). Acá el que se quiere mostrar es siempre
- * el jugador, nunca quien invitó.
+ * El embed del perfil va siempre con la FK explícita. Desde la 027 la tabla tiene dos
+ * claves foráneas a `profiles` (`user_id` e `invited_by`), y con dos caminos posibles
+ * pedir `profiles(...)` a secas devuelve 300 PGRST201. El que se muestra es el jugador.
  */
 export class SupabaseJoinRequestRepository implements IJoinRequestRepository {
 	async create(matchId: string, userId: string, message?: string, teamSlot?: TeamSlot): Promise<JoinRequest | null> {
@@ -131,16 +124,9 @@ export class SupabaseJoinRequestRepository implements IJoinRequestRepository {
 	}
 
 	/**
-	 * Las invitaciones del partido, en cualquier estado (027).
-	 *
-	 * Sin filtro de status a propósito: una rechazada tiene que seguir viéndose. Y con
-	 * el perfil recortado a lo que se muestra —nombre y avatar— en vez del `profiles(*)`
-	 * que usan las consultas viejas: para pintar una fila de lista no hace falta el
-	 * mail ni el teléfono de nadie.
-	 *
-	 * Sólo la puede usar el creador, y no porque el cliente lo pida: la policy de
-	 * SELECT de join_requests deja ver las filas propias o las del partido que uno
-	 * creó, así que a cualquier otro esto le devuelve vacío.
+	 * Sin filtro de status: una invitación rechazada tiene que seguir viéndose. El
+	 * perfil va recortado a lo que se muestra, no el `profiles(*)` de las consultas
+	 * viejas. A quien no sea el creador la RLS le devuelve vacío.
 	 */
 	async getInvitations(matchId: string): Promise<MatchInvitation[]> {
 		const { data, error } = await supabase

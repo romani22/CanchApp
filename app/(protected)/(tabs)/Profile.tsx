@@ -24,12 +24,8 @@ export default function ProfileScreen() {
 	const { user, profile, signOut, deleteAccount, refreshProfile } = useAuth()
 
 	/**
-	 * ¿Esta cuenta tiene contraseña?
-	 *
-	 * Quien entró sólo con Google no tiene ninguna, así que pedirle la "actual" le
-	 * impediría ponerse una por primera vez. El default es `true` —pedirla— porque es
-	 * el lado seguro: si por algún motivo no se puede saber, mejor pedir de más que
-	 * dejar cambiar la contraseña sin prueba de identidad.
+	 * Quien entró sólo con Google no tiene contraseña que pedirle. El default es
+	 * pedirla: ante la duda, mejor de más que dejar cambiarla sin prueba de identidad.
 	 */
 	const hasPasswordIdentity = user?.identities?.some((identity) => identity.provider === 'email') ?? true
 
@@ -52,7 +48,6 @@ export default function ProfileScreen() {
 	const [passwordModalVisible, setPasswordModalVisible] = useState(false)
 	const [currentPassword, setCurrentPassword] = useState('')
 
-	// Eliminar cuenta (028). Google Play exige que esto exista dentro de la app.
 	const [deleteModalVisible, setDeleteModalVisible] = useState(false)
 	const [deleteProof, setDeleteProof] = useState('')
 	const [deleting, setDeleting] = useState(false)
@@ -158,17 +153,9 @@ export default function ProfileScreen() {
 	}
 
 	/**
-	 * Cambiar la contraseña, pidiendo la actual.
-	 *
-	 * Antes sólo pedía la nueva dos veces. Con eso, cualquiera que agarrara el teléfono
-	 * con la sesión abierta —o el bloqueo por inactividad todavía sin saltar— cambiaba
-	 * la contraseña y dejaba al dueño afuera de su propia cuenta, sin haber tenido que
-	 * probar en ningún momento que era él.
-	 *
-	 * La verificación se hace con un signIn contra la contraseña actual. No es sólo un
-	 * chequeo nuestro: deja la sesión marcada como "recién autenticada", que es lo que
-	 * pide `secure_password_change` del lado del servidor. Sin esto, activar esa opción
-	 * haría fallar el cambio de contraseña con un error de reautenticación.
+	 * Pide la contraseña actual: sin eso, cualquiera con el teléfono en la mano dejaba
+	 * al dueño afuera de su cuenta. El signIn de verificación además deja la sesión
+	 * marcada como recién autenticada, que es lo que exige `secure_password_change`.
 	 */
 	const handleChangePassword = async () => {
 		if (hasPasswordIdentity && !currentPassword) {
@@ -221,13 +208,8 @@ export default function ProfileScreen() {
 	}
 
 	/**
-	 * Eliminar la cuenta. No tiene vuelta atrás.
-	 *
-	 * Pide una prueba de identidad antes, por el mismo motivo que el cambio de
-	 * contraseña: el teléfono desbloqueado en la mano de otro no puede alcanzar para
-	 * borrarle la cuenta a alguien. Para las cuentas con contraseña, esa prueba es la
-	 * contraseña; para las de Google, que no tienen ninguna, es escribir ELIMINAR —
-	 * más débil, pero al menos descarta el toque accidental.
+	 * No tiene vuelta atrás, así que pide prueba de identidad: la contraseña, o
+	 * escribir ELIMINAR en las cuentas de Google, que no tienen una.
 	 */
 	const handleDeleteAccount = async () => {
 		if (hasPasswordIdentity) {
@@ -257,15 +239,12 @@ export default function ProfileScreen() {
 				}
 			}
 
+			// Sin navegación explícita: al quedarse sin sesión, el layout de (protected)
+			// redirige solo al login.
 			await deleteAccount()
-
-			// No hay navegación explícita: al quedarse sin sesión, el layout de
-			// (protected) redirige solo al login. Forzarla acá sería competir con él.
 			setDeleteModalVisible(false)
 			setDeleteProof('')
 		} catch (error) {
-			// Si falló, la cuenta SIGUE VIVA. Hay que decirlo: dejar a alguien creyendo
-			// que borró sus datos cuando no se borraron es peor que el error.
 			console.error('[Profile] Error eliminando la cuenta:', error)
 			Alert.alert('No se pudo eliminar', 'Tu cuenta sigue activa. Revisá tu conexión e intentá de nuevo.')
 		} finally {
@@ -280,7 +259,6 @@ export default function ProfileScreen() {
 
 	const closePasswordModal = () => {
 		setPasswordModalVisible(false)
-		// Que no queden contraseñas en el estado de la pantalla después de cerrar.
 		setCurrentPassword('')
 		setNewPassword('')
 		setConfirmPassword('')
@@ -342,9 +320,6 @@ export default function ProfileScreen() {
 					</TouchableOpacity>
 				</View>
 
-				{/* Eliminar cuenta. Separado del logout y en texto chico: Google pide que
-				    sea fácil de encontrar, no que compita con las acciones de todos los
-				    días. Lo que lo hace difícil de tocar por accidente es el modal. */}
 				<TouchableOpacity style={localStyles.deleteLink} onPress={() => setDeleteModalVisible(true)}>
 					<Text style={localStyles.deleteLinkText}>Eliminar mi cuenta</Text>
 				</TouchableOpacity>
@@ -360,9 +335,6 @@ export default function ProfileScreen() {
 						<View style={styles.passwordModal}>
 							<Text style={styles.modalTitle}>Eliminar mi cuenta</Text>
 
-							{/* Decir qué pasa y qué no. La mitad de abajo importa tanto como la de
-							    arriba: alguien que organiza todas las semanas tiene derecho a saber
-							    que irse no le borra el historial al grupo. */}
 							<Text style={localStyles.deleteWarning}>Esto no se puede deshacer.</Text>
 
 							<View style={localStyles.deleteDetail}>
@@ -375,7 +347,6 @@ export default function ProfileScreen() {
 							{hasPasswordIdentity ? (
 								<TextInput placeholder='Tu contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry autoComplete='current-password' value={deleteProof} onChangeText={setDeleteProof} />
 							) : (
-								/* Las cuentas de Google no tienen contraseña que pedir. */
 								<TextInput placeholder='Escribí ELIMINAR' placeholderTextColor='#999' style={styles.modalInput} autoCapitalize='characters' autoCorrect={false} value={deleteProof} onChangeText={setDeleteProof} />
 							)}
 
@@ -398,8 +369,6 @@ export default function ProfileScreen() {
 						<View style={styles.passwordModal}>
 							<Text style={styles.modalTitle}>Cambiar contraseña</Text>
 
-							{/* Sólo para cuentas con contraseña: quien entró con Google no tiene una
-							    actual que pedirle, y se estaría poniendo la primera. */}
 							{hasPasswordIdentity && <TextInput placeholder='Contraseña actual' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry autoComplete='current-password' value={currentPassword} onChangeText={setCurrentPassword} />}
 
 							<TextInput placeholder='Nueva contraseña' placeholderTextColor='#999' style={styles.modalInput} secureTextEntry autoComplete='new-password' value={newPassword} onChangeText={setNewPassword} />
@@ -424,11 +393,9 @@ export default function ProfileScreen() {
 	)
 }
 
-// Eliminar cuenta (028). Van acá y no en Profile.styles porque son de esta pantalla
-// y de ninguna otra.
 const localStyles = StyleSheet.create({
-	// Enlace discreto, no botón: tiene que ser fácil de encontrar —Google lo exige—
-	// sin quedar al lado de "Cerrar Sesión" invitando a errarle.
+	// Enlace y no botón: fácil de encontrar sin quedar al lado de "Cerrar Sesión"
+	// invitando a errarle.
 	deleteLink: {
 		alignItems: 'center',
 		paddingVertical: 18,

@@ -2,69 +2,35 @@
 -- Migración 028: eliminar mi cuenta
 -- =====================================================
 --
--- Google Play exige que el usuario pueda pedir el borrado de su cuenta desde la
--- app y también desde la web, sin instalarla. Hoy no existe por ningún lado, y
--- eso solo bloquea la publicación.
+-- Google Play exige poder pedir el borrado de la cuenta desde la app, y no existe.
 --
---
--- POR QUÉ NO ALCANZA CON BORRAR LA FILA
---
--- `profiles.id` referenciaba `auth.users(id) ON DELETE CASCADE`, y de `profiles`
--- cuelgan otras 15 claves foráneas. La más cara es `matches.creator_id`, que
--- también cascadea: borrar una cuenta **borraba todos los partidos que esa
--- persona organizó**, y con ellos los participantes, resultados, ratings y
--- estadísticas de TODOS los demás que jugaron.
---
--- En una app donde normalmente organiza siempre el mismo, el que se va se lleva
--- puesto el historial del grupo. Eso no es "borrar mis datos": es borrar los de
+-- No alcanza con borrar la fila. `profiles.id` referenciaba `auth.users(id) ON
+-- DELETE CASCADE`, y de `profiles` cuelgan 18 claves foráneas más. La cara es
+-- `matches.creator_id`, que también cascadea: borrar una cuenta borraba todos los
+-- partidos que esa persona organizó, y con ellos los participantes, resultados y
+-- calificaciones de todos los demás. Eso no es borrar mis datos, es borrar los de
 -- otros.
 --
+-- El criterio es la lápida: `auth.users` se borra de verdad —se van el mail, las
+-- identidades, las sesiones y los refresh tokens— y `profiles` sobrevive con los
+-- datos personales limpiados y `deleted_at` marcado, para que el partido del año
+-- pasado siga diciendo quién jugó.
 --
--- EL CRITERIO: LÁPIDA
---
--- Se borra de verdad lo que identifica a la persona, y sobrevive lo que es
--- historia compartida:
---
---   · `auth.users` se BORRA. Es lo que hace que el borrado sea real: se van el
---     mail, las identidades (incluida la de Google), las sesiones y los refresh
---     tokens. La persona no puede volver a entrar y el mail queda libre para
---     registrarse de nuevo.
---   · `profiles` SOBREVIVE como lápida, con los datos personales limpiados y
---     `deleted_at` marcado. Sirve para que el partido del año pasado siga
---     diciendo quién jugó, aunque ahora diga "Usuario eliminado".
---
--- Es el patrón estándar, y es lo que Google pide: lo que tiene que desaparecer
--- son los datos personales, no la actividad de terceros.
---
---
--- LO QUE NO PUEDE VIVIR ACÁ: EL AVATAR
---
--- El archivo del avatar lo tiene que borrar el CLIENTE con la Storage API, antes
--- de llamar a esta función. No es una preferencia: Supabase protege esas tablas
--- con `storage.protect_delete()`, que aborta cualquier DELETE directo sobre
--- `storage.objects` y, al dispararse adentro de esta transacción, se llevaría
--- puesto el borrado entero. Es exactamente lo que le pasó a la migración 018 y
--- por lo que la 019 la revirtió.
---
--- Orden correcto, y está implementado así en el cliente:
---   1. `storageService.deleteAvatar(userId)`   (Storage API)
---   2. `rpc('delete_my_account')`              (esta función)
+-- El avatar lo borra el CLIENTE con la Storage API antes de llamar a esta función:
+-- Supabase aborta cualquier DELETE directo sobre `storage.objects` y acá adentro
+-- voltearía la transacción entera. Es lo que revirtió la 019.
 
 
 -- ============================================================
 -- 1. Que borrar el usuario NO borre el perfil
 -- ============================================================
--- Sin esto, el DELETE sobre auth.users del bloque 3 cascadea a profiles y de ahí
--- a todo lo demás, que es justo lo que esta migración evita.
+-- Sin esto, el DELETE sobre auth.users del bloque 4 cascadea a profiles.
 --
--- La FK se saca en vez de cambiarle el ON DELETE: `profiles.id` es la clave
--- primaria, así que no puede ser NULL y `SET NULL` no es una opción. Quedan
--- perfiles sin usuario, y eso es exactamente lo que queremos — son las lápidas.
--- `deleted_at` es lo que los distingue de un perfil vivo.
+-- La FK se saca en vez de cambiarle el ON DELETE porque `profiles.id` es la clave
+-- primaria y `SET NULL` no es una opción. Quedan perfiles sin usuario, que es
+-- justamente lo que son las lápidas; `deleted_at` las distingue de un perfil vivo.
 --
--- El alta sigue cubierta: `handle_new_user()` (001) inserta el perfil desde un
--- trigger sobre auth.users, así que no hay forma de tener un perfil vivo sin su
--- usuario.
+-- El alta sigue cubierta por el trigger handle_new_user() de la 001.
 ALTER TABLE profiles
     DROP CONSTRAINT IF EXISTS profiles_id_fkey;
 
@@ -79,15 +45,15 @@ CREATE INDEX IF NOT EXISTS idx_profiles_activos ON profiles (id) WHERE deleted_a
 
 
 -- ============================================================
--- 2. Nadie invita ni califica a una lápida
+-- 2. No se invita a una lápida
 -- ============================================================
--- El cliente ya filtra por deleted_at en el buscador, pero eso es cosmético: un
--- POST directo con la anon key lo saltea. Estas dos policies son lo que de verdad
--- lo impide.
+-- El filtro del cliente es cosmético: un POST directo con la anon key lo saltea.
+-- Esta policy es lo que de verdad lo impide.
 --
--- Se reescriben enteras en vez de agregar una policy nueva porque dos policies
--- permisivas se combinan con OR: una nueva que dijera "y que no esté borrado" no
--- restringiría nada, alcanzaría con que la vieja dijera que sí.
+-- Se reescribe entera en vez de agregar una nueva porque dos policies permisivas
+-- se combinan con OR, así que una que agregara la condición no restringiría nada.
+--
+-- Calificar a una lápida quedó abierto acá y lo cierra la 029.
 DROP POLICY IF EXISTS "Users request and creators invite" ON join_requests;
 CREATE POLICY "Users request and creators invite"
     ON join_requests FOR INSERT
@@ -106,18 +72,11 @@ CREATE POLICY "Users request and creators invite"
 -- ============================================================
 -- 3. `deleted_at` no lo escribe el cliente
 -- ============================================================
--- Se agrega a protect_profile_derived_columns (025/026), el trigger que revierte
--- en silencio los intentos del cliente de tocar columnas que calcula el servidor.
+-- Sin esto, un PATCH deja a alguien marcado como borrado sin estarlo: invisible en
+-- el buscador, no invitable, y entrando a la app normalmente.
 --
--- Sin esto, un `PATCH /profiles` con la anon key deja a un usuario marcado como
--- borrado sin estarlo: desaparece del buscador, no lo pueden invitar, y sin
--- embargo entra a la app normalmente. No es una fuga de datos, pero es un estado
--- que no debería poder existir — y el camino de vuelta tampoco tiene que existir:
--- una lápida no se "revive" editando una fila.
---
--- El trigger sólo actúa cuando quien escribe es `authenticated` o `anon`, así que
--- delete_my_account() —que corre como el dueño, por ser SECURITY DEFINER— pasa
--- de largo y sí puede marcarlo.
+-- El trigger sólo actúa sobre `authenticated` y `anon`, así que delete_my_account()
+-- —SECURITY DEFINER, corre como el dueño— pasa de largo y sí puede marcarlo.
 CREATE OR REPLACE FUNCTION public.protect_profile_derived_columns()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -150,11 +109,8 @@ $$;
 -- ============================================================
 -- 4. La función
 -- ============================================================
--- SECURITY DEFINER porque `authenticated` no tiene —ni debe tener— permiso sobre
--- auth.users. La función corre con los privilegios de su dueño.
---
--- `auth.uid()` y nada más: no recibe parámetros a propósito. Una función de
--- borrado que acepte un id ajeno es un arma; sin parámetro, no hay forma de
+-- SECURITY DEFINER porque `authenticated` no tiene permiso sobre auth.users.
+-- Sin parámetros a propósito: resuelve con auth.uid(), así que no hay forma de
 -- pedirle que borre a otro.
 CREATE OR REPLACE FUNCTION public.delete_my_account()
     RETURNS VOID

@@ -1,21 +1,19 @@
 -- =====================================================
--- Verificación posterior a la migración 028 (eliminar mi cuenta)
+-- Verificación de "eliminar mi cuenta" (migraciones 028 y 029)
 -- =====================================================
 --
--- CORRER ESTO DESPUÉS DE APLICAR LA 028, en el editor SQL del proyecto hosteado.
+-- CORRER ESTO DESPUÉS DE APLICAR LA 028 Y LA 029, en el editor SQL del hosteado.
 --
 -- Es de sólo lectura y no inserta datos de prueba, igual que verify_025/026/027.
 -- La prueba de comportamiento está en smoke_rls_security.sql (bloque 13), que crea
 -- usuarios y partidos falsos y por eso sólo va contra la base local.
 --
--- Todo tiene que decir OK. La 028 es re-ejecutable, así que ante una FALLA se puede
--- volver a aplicar entera.
+-- Todo tiene que decir OK. Las dos son re-ejecutables, así que ante una FALLA se
+-- pueden volver a aplicar enteras.
 --
--- EL CONTROL QUE MÁS IMPORTA ES EL 1. Si `profiles.id` volviera a referenciar
--- auth.users con ON DELETE CASCADE, el borrado de una cuenta arrastraría los
--- partidos que esa persona organizó y, con ellos, el historial de todos los que
--- jugaron. La feature seguiría "funcionando" y estaría destruyendo datos ajenos en
--- silencio — no hay error, no hay aviso: los partidos simplemente ya no están.
+-- EL CONTROL QUE MÁS IMPORTA ES EL 1. Si volviera el ON DELETE CASCADE, borrar una
+-- cuenta arrastraría los partidos que organizó y el historial de todos los que
+-- jugaron, sin error y sin aviso: la feature seguiría "funcionando".
 -- =====================================================
 
 WITH checks AS (
@@ -118,8 +116,31 @@ WITH checks AS (
 
     UNION ALL
 
-    -- ── Transversal, heredado de la 025 ────────────────────────────────────
+    -- ── No se califica a una lápida (029) ──────────────────────────────────
     SELECT 9,
+           'la policy de calificación excluye las cuentas borradas',
+           CASE
+               WHEN EXISTS (SELECT 1 FROM pg_policies
+                            WHERE schemaname = 'public'
+                              AND tablename = 'match_ratings'
+                              AND cmd = 'INSERT'
+                              AND with_check LIKE '%deleted_at%')
+                   THEN ''
+               ELSE 'se puede calificar a una cuenta borrada' END
+
+    UNION ALL
+
+    SELECT 10,
+           'el índice de perfiles activos quedó renombrado',
+           CASE
+               WHEN EXISTS (SELECT 1 FROM pg_indexes
+                            WHERE schemaname = 'public' AND indexname = 'idx_profiles_active')
+                   THEN '' ELSE 'FALTA idx_profiles_active' END
+
+    UNION ALL
+
+    -- ── Transversal, heredado de la 025 ────────────────────────────────────
+    SELECT 11,
            'todas las SECURITY DEFINER con search_path fijo',
            COALESCE((SELECT string_agg(p.oid::REGPROCEDURE::TEXT, ', ')
                      FROM pg_proc p

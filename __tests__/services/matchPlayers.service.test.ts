@@ -9,6 +9,7 @@ function makeBuilder(result: { data?: unknown; error?: unknown } = {}) {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     neq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
     ilike: jest.fn().mockReturnThis(),
     // `or` sigue en el mock a propósito, aunque el código ya no lo use: los tests de
     // searchUsers verifican que NO se llame. Sin el mock, "no se llamó" sería
@@ -247,6 +248,17 @@ describe('matchPlayersService', () => {
       await matchPlayersService.searchUsers('@gmail')
 
       expect(builder.ilike).toHaveBeenCalledWith('full_name', '%@gmail%')
+    })
+
+    it('no ofrece cuentas borradas', async () => {
+      // Igual que searchByName. La policy es la que de verdad lo impide, pero una
+      // lápida no tiene por qué aparecer en un buscador.
+      const builder = makeBuilder({ data: [] })
+      mockFrom.mockReturnValue(builder)
+
+      await matchPlayersService.searchUsers('ana')
+
+      expect(builder.is).toHaveBeenCalledWith('deleted_at', null)
     })
 
     it('respeta el límite máximo de 10', async () => {

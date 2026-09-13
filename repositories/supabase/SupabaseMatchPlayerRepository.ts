@@ -111,7 +111,9 @@ export class SupabaseMatchPlayerRepository implements IMatchPlayerRepository {
 		const raw = query.trim()
 		if (raw.length < 2) return []
 
-		let q = supabase.from('profiles').select('id, full_name, avatar_url, email, sport_levels').limit(normalizeSearchLimit(options?.limit ?? 10))
+		// El .is('deleted_at', null) va igual que en searchByName: las cuentas borradas
+		// no se ofrecen (028).
+		let q = supabase.from('profiles').select('id, full_name, avatar_url, email, sport_levels').is('deleted_at', null).limit(normalizeSearchLimit(options?.limit ?? 10))
 
 		q = looksLikeEmail(raw) ? q.ilike('email', likePattern(raw)) : q.ilike('full_name', `%${likePattern(raw)}%`)
 

@@ -1,8 +1,8 @@
 import { styles } from '@/assets/styles/Login.styles'
 import Loader from '@/components/ui/Loader'
 import { useAuth } from '@/context/AuthContext'
-import { useBiometricAuth } from '@/hooks/useBiometricAuth'
 import { authService } from '@/services/auth.service'
+import { biometricService } from '@/services/biometric.service'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
@@ -23,15 +23,13 @@ export default function LoginScreen() {
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [biometricAvailable, setBiometricAvailable] = useState(false)
-	// La preferencia del usuario: si ya dijo que quiere entrar con huella.
+	// La preferencia del usuario.
 	const [biometricEnabled, setBiometricEnabled] = useState(false)
-	// Si además hay un token guardado con el que se pueda entrar AHORA. Son dos cosas
-	// distintas y por eso son dos estados: cerrar sesión revoca el token pero no cambia
-	// lo que el usuario quiere. El botón se muestra por esto, no por la preferencia.
+	// Si además hay token con el que entrar ahora. Cerrar sesión lo revoca sin cambiar
+	// la preferencia, y el botón se muestra por esto.
 	const [biometricReady, setBiometricReady] = useState(false)
 
 	const { signIn, signInWithGoogle, signInWithRefreshToken, isAuthenticated } = useAuth()
-	const { isAvailable, isEnabled, enable, hasStoredToken, clearRefreshToken, authenticate } = useBiometricAuth()
 	const [pendingNav, setPendingNav] = useState(false)
 
 	useEffect(() => {
@@ -43,16 +41,16 @@ export default function LoginScreen() {
 
 	useEffect(() => {
 		const checkBiometrics = async () => {
-			const available = await isAvailable()
+			const available = await biometricService.isAvailable()
 			setBiometricAvailable(available)
 			if (available) {
-				const [enabled, ready] = await Promise.all([isEnabled(), hasStoredToken()])
+				const [enabled, ready] = await Promise.all([biometricService.isEnabled(), biometricService.hasStoredToken()])
 				setBiometricEnabled(enabled)
 				setBiometricReady(ready)
 			}
 		}
 		checkBiometrics()
-	}, [isAvailable, isEnabled, hasStoredToken])
+	}, [])
 
 	// Navega solo cuando el AuthContext confirma que isAuthenticated es true
 	useEffect(() => {
@@ -63,14 +61,8 @@ export default function LoginScreen() {
 
 	const triggerNavigation = () => setPendingNav(true)
 
-	// No recibe las credenciales: lo que se guarda es el refresh token de la sesión que
-	// el login acaba de abrir, nunca la contraseña. Ver el comentario largo en
-	// services/biometric.service.ts.
-	//
 	// El token se pide con getSession() y no se toma del `session` del contexto: esto
-	// corre dentro del callback de un Alert, y no hay nada que garantice que el estado
-	// de React ya esté actualizado con la sesión nueva. getSession() lee la de verdad,
-	// la que tiene el cliente de Supabase.
+	// corre dentro del callback de un Alert y el estado de React puede no estar al día.
 	const offerBiometricSetup = () => {
 		Alert.alert('Acceso con huella', '¿Querés activar el inicio de sesión con huella dactilar?', [
 			{ text: 'Ahora no', style: 'cancel', onPress: triggerNavigation },
@@ -82,15 +74,13 @@ export default function LoginScreen() {
 						const refreshToken = data.session?.refresh_token
 
 						if (!refreshToken) {
-							// Sin token no hay nada que guardar, y dejar la preferencia prendida
-							// sola daría un botón de huella que después no deja entrar.
 							console.warn('[Login] no hay sesión para guardar: la huella queda desactivada')
 							setError('No pudimos activar la huella. Probá de nuevo la próxima vez que ingreses.')
 							triggerNavigation()
 							return
 						}
 
-						await enable(refreshToken)
+						await biometricService.enable(refreshToken)
 						setBiometricEnabled(true)
 						setBiometricReady(true)
 					} catch (err) {
@@ -140,13 +130,11 @@ export default function LoginScreen() {
 
 		try {
 			// Devuelve el refresh token guardado, no la contraseña.
-			const refreshToken = await authenticate()
+			const refreshToken = await biometricService.authenticate()
 
 			if (!refreshToken) {
-				// Lo normal acá es que el usuario cancelara la huella, y eso no se comenta.
-				// Que no haya token no debería pasar —el botón se muestra sólo si lo hay—
-				// pero si pasa, se esconde el botón en vez de dejarlo fallando.
-				if (await hasStoredToken()) return
+				// Lo normal es que el usuario cancelara la huella; eso no se comenta.
+				if (await biometricService.hasStoredToken()) return
 				setBiometricReady(false)
 				setError('No hay una sesión guardada. Ingresá con tu contraseña.')
 				return
@@ -156,15 +144,10 @@ export default function LoginScreen() {
 			const { error } = await signInWithRefreshToken(refreshToken)
 
 			if (error) {
-				// El token fue rotado o revocado: se cerró sesión en otro dispositivo, o pasó
-				// demasiado tiempo. Se borra para que el botón desaparezca en vez de seguir
-				// ofreciendo algo que no entra.
-				//
-				// La preferencia queda: el usuario ya dijo que quiere huella, y AuthContext
-				// vuelve a guardar el token en cuanto ingrese con la contraseña. No hay que
-				// hacerle activarla de nuevo.
+				// Token rotado o revocado. Se borra para que el botón desaparezca; la
+				// preferencia queda y se rearma al ingresar con contraseña.
 				console.warn('[Login] el refresh token guardado ya no sirve:', error.message)
-				await clearRefreshToken()
+				await biometricService.clearRefreshToken()
 				setBiometricReady(false)
 				setError('La sesión guardada expiró. Ingresá con tu contraseña.')
 				setLoading(false)
@@ -270,9 +253,7 @@ export default function LoginScreen() {
 										<Text style={styles.googleButtonText}>Continuar con Google</Text>
 									</TouchableOpacity>
 
-									{/* Por biometricReady y no por la preferencia: si no hay token guardado
-									    no hay con qué entrar, y el botón sólo llevaría a un error y a tener
-									    que escribir la contraseña igual. Sin token, mail y contraseña. */}
+									{/* Por biometricReady: sin token el botón sólo llevaría a un error. */}
 									{biometricAvailable && biometricReady && (
 										<View style={styles.biometricContainer}>
 											<TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin}>

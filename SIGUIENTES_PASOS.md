@@ -24,8 +24,9 @@ Pegá esto en un chat nuevo:
 | `supabase/migrations/026_close_write_paths.sql` | A2, A3, A5, M2, M3 |
 | `supabase/migrations/027_match_invitations.sql` | A4 — invitaciones con consentimiento |
 | `supabase/migrations/028_delete_account.sql` | Eliminar mi cuenta (bloqueo de Google Play) |
-| `supabase/diagnostics/smoke_rls_security.sql` | 54 aserciones. **Sólo contra la base local** (crea usuarios falsos) |
-| `supabase/diagnostics/verify_025/026/027/028.sql` | Verificadores de sólo lectura (13 + 15 + 13 + 9 chequeos). **Seguros en producción** |
+| `supabase/migrations/029_no_rating_deleted_accounts.sql` | Cierra la mitad que la 028 dejó abierta: calificar cuentas borradas |
+| `supabase/diagnostics/smoke_rls_security.sql` | 56 aserciones. **Sólo contra la base local** (crea usuarios falsos) |
+| `supabase/diagnostics/verify_025/026/027/028.sql` | Verificadores de sólo lectura (13 + 15 + 13 + 11 chequeos; el de 028 cubre también la 029). **Seguros en producción** |
 | `supabase/functions/send-push-notification/README.md` | Cómo desplegar la Edge Function y su secreto |
 
 Validación local completa:
@@ -71,7 +72,7 @@ PostgREST incluso sugiere la pista exacta en el `hint` del error 300, así que s
 
 La migración 027 **ya está aplicada en la base hosteada** y verificada, pero el cliente correspondiente **no está buildeado**. Mientras tanto, el build viejo instalado falla al crear un partido con jugadores registrados pre-agregados: la policy nueva rechaza ese INSERT. Se cierra buildeando.
 
-> **La 028 todavía NO está aplicada en la base hosteada.** Es la única migración que falta aplicar allá. Aplicarla antes del build no rompe nada del cliente viejo: agrega una columna y una función que el build viejo no usa. Después, correr `verify_028.sql`.
+> **La 028 ya está aplicada en la base hosteada. Falta la 029**, que cierra lo que la 028 dejó abierto: una lápida seguía siendo calificable, y el trigger `on_new_rating` le repoblaba el rating que el borrado había reseteado (medido: 5.00/0 → 1.00/1). Aplicarla y correr `verify_028.sql`, que cubre las dos.
 
 El build pendiente trae:
 
@@ -260,7 +261,7 @@ Mientras no pagues Pro: programate un `pg_dump` periódico. No es point-in-time 
 ## 6. Decisiones ya tomadas (no rediscutir)
 
 - **Consentimiento de las dos partes** para entrar a un partido: el creador invita y el jugador registrado acepta. La aprobación del creador **no alcanza** — protege el partido, no a la persona: sin el segundo consentimiento, el atacante crea su partido, invita a la víctima y aprueba su propia invitación.
-- **`match_players` está cerrada**: feature muerta, sin UI que la alcance y con las funciones rotas. Si vuelve, hay que crear funciones nuevas con sus chequeos, no revivir las borradas.
+- **`match_players` está cerrada**: feature muerta y con las funciones borradas por la 026. Ojo con el apunte viejo que decía "sin UI que la alcance": la ruta `app/(protected)/match/add-payers.tsx` (sí, con esa errata) sigue existiendo y monta `AddPlayersForm`. Nadie navega ahí, pero en expo-router cada archivo de `app/` es una ruta, así que es alcanzable por deep link; el buscador anda y el alta falla al final porque `add_multiple_players` ya no existe. Conviene borrar la ruta y el componente. Si la feature vuelve, funciones nuevas con sus chequeos, no revivir las borradas.
 - **El login con huella guarda el refresh token, nunca la contraseña.** No se usa `requireAuthentication` de SecureStore porque en Android exige autenticación para escribir, y el token rota cada hora: le pediría la huella al usuario todo el tiempo.
 - **Los resultados y las solicitudes se escriben sólo por RPC.** Las tablas no tienen DML directo para `authenticated`.
 - **Toda migración que agregue o borre una RPC debe actualizar el bloque 6c del smoke test Y el chequeo 6 de `verify_025.sql`.** `has_function_privilege()` sobre una función inexistente no devuelve `false`: corta con error y mata el archivo entero. Ya pasó una vez: la 026 (2026-08-12) dejó `verify_025.sql` muerto, y no se notó porque no aparece como un FALLA visible sino que corta la ejecución. Por eso el chequeo 6 ahora envuelve cada nombre en `to_regprocedure()` dentro de un `CASE` para que una RPC borrada salga como FALLA. Al agregar una RPC nueva, conviene copiar ese patrón.

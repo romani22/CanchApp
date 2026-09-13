@@ -1188,13 +1188,8 @@ $$;
 -- 13. Eliminar mi cuenta (028)
 -- ══════════════════════════════════════════════════════════════════════════
 --
--- Lo que hay que probar acá no es que borre, sino QUÉ borra. El riesgo de esta
--- feature no es que falle: es que funcione de más. `matches.creator_id` cascadeaba
--- desde profiles, así que antes de la 028 el que se iba se llevaba puestos los
--- partidos que organizó — y con ellos los participantes, resultados y
--- calificaciones de todos los demás.
---
--- Dani organiza dos partidos, uno ya jugado con Beto y uno futuro, y se borra.
+-- Lo que se prueba no es que borre, sino QUÉ borra: el riesgo es que funcione de
+-- más. Dani organiza dos partidos, uno jugado y uno futuro, y se borra.
 
 INSERT INTO auth.users (id, email, raw_user_meta_data)
 VALUES ('55555555-5555-5555-5555-555555555555', 'dani@test.com', '{"full_name":"Dani"}');
@@ -1211,6 +1206,7 @@ VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', '55555555-5555-5555-5555-5555555
 INSERT INTO match_participants (match_id, user_id, is_creator)
 VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', '55555555-5555-5555-5555-555555555555', true),
        ('dddddddd-dddd-dddd-dddd-dddddddddddd', '22222222-2222-2222-2222-222222222222', false),
+       ('dddddddd-dddd-dddd-dddd-dddddddddddd', '44444444-4444-4444-4444-444444444444', false),
        ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', '22222222-2222-2222-2222-222222222222', false);
 
 -- Se calificaron mutuamente, los dos con comentario.
@@ -1228,8 +1224,7 @@ VALUES ('55555555-5555-5555-5555-555555555555', 'new_match', 'Un partido cerca',
 
 
 -- ── Sin sesión no se borra nada ────────────────────────────────────────────
--- La función no recibe parámetros justamente para que "borrame a ese otro" no se
--- pueda ni expresar. El otro camino a cubrir es el de siempre: sin sesión.
+-- Sin parámetros, "borrame a ese otro" no se puede ni expresar; queda cubrir esto.
 DO
 $$
     BEGIN
@@ -1291,8 +1286,8 @@ $$
         END IF;
         SELECT COUNT(*) INTO v_n FROM match_participants
         WHERE match_id = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
-        IF v_n <> 2 THEN
-            RAISE EXCEPTION 'ROTO: se perdieron participantes de un partido ajeno (esperaba 2, hay %)', v_n;
+        IF v_n <> 3 THEN
+            RAISE EXCEPTION 'ROTO: se perdieron participantes de un partido ajeno (esperaba 3, hay %)', v_n;
         END IF;
         RAISE NOTICE 'OK 13d — el partido jugado y sus participantes sobreviven';
 
@@ -1340,9 +1335,7 @@ $$;
 
 
 -- ── El cliente no se puede marcar como borrado ─────────────────────────────
--- Un PATCH sobre deleted_at dejaría a alguien fuera del buscador y sin poder ser
--- invitado, pero entrando a la app normalmente. Estado imposible de alcanzar por
--- los caminos buenos, así que tampoco por los malos.
+-- Dejaría a alguien fuera del buscador pero entrando a la app normalmente.
 DO
 $$
     DECLARE
@@ -1365,8 +1358,7 @@ $$;
 
 
 -- ── No se invita a una lápida ──────────────────────────────────────────────
--- El cliente filtra por deleted_at en el buscador, pero eso es cosmético: un POST
--- directo con la anon key lo saltea. Lo que de verdad lo impide es la policy.
+-- El filtro del cliente es cosmético; lo que lo impide es la policy.
 DO
 $$
     BEGIN
@@ -1383,6 +1375,65 @@ $$
                 RAISE NOTICE 'OK 13i — no se puede invitar a una cuenta borrada';
         END;
         RESET ROLE;
+    END
+$$;
+
+
+-- ── No se califica a una lápida (029) ──────────────────────────────────────
+-- Sigue siendo participante de sus partidos pasados. Sin la policy, la
+-- calificación entra y on_new_rating le repuebla el rating que se había reseteado.
+DO
+$$
+    DECLARE
+        v_rating NUMERIC;
+        v_count  INTEGER;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        BEGIN
+            INSERT INTO match_ratings (match_id, rater_id, rated_user_id, rating, comment)
+            VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd',
+                    '22222222-2222-2222-2222-222222222222',
+                    '55555555-5555-5555-5555-555555555555', 1, 'sobre alguien borrado');
+            RAISE EXCEPTION 'ROTO: se pudo calificar a una cuenta borrada';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                NULL;
+        END;
+        RESET ROLE;
+
+        SELECT rating, rating_count INTO v_rating, v_count
+        FROM profiles WHERE id = '55555555-5555-5555-5555-555555555555';
+
+        IF v_rating <> 5.00 OR v_count <> 0 THEN
+            RAISE EXCEPTION 'ROTO: la lápida recuperó rating (%, %)', v_rating, v_count;
+        END IF;
+        RAISE NOTICE 'OK 13k — no se puede calificar a una cuenta borrada';
+    END
+$$;
+
+
+-- Y lo que no se tiene que romper: calificar a alguien vivo.
+DO
+$$
+    DECLARE
+        v_count INTEGER;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        SET LOCAL request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+        INSERT INTO match_ratings (match_id, rater_id, rated_user_id, rating)
+        VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd',
+                '22222222-2222-2222-2222-222222222222',
+                '44444444-4444-4444-4444-444444444444', 5);
+        RESET ROLE;
+
+        SELECT rating_count INTO v_count FROM profiles
+        WHERE id = '44444444-4444-4444-4444-444444444444';
+
+        IF v_count < 1 THEN
+            RAISE EXCEPTION 'ROTO: calificar a un usuario vivo dejó de funcionar';
+        END IF;
+        RAISE NOTICE 'OK 13l — calificar a un usuario vivo sigue funcionando';
     END
 $$;
 

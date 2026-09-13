@@ -62,12 +62,7 @@ export interface Database {
 					onboarding_completed: boolean
 					created_at: string
 					updated_at: string
-					/**
-					 * Con valor, esta fila es una lápida (028): el usuario borró su cuenta,
-					 * ya no existe en auth.users y los datos personales de acá fueron
-					 * limpiados. Sobrevive sólo para que el historial de partidos de otros
-					 * siga teniendo un nombre que mostrar.
-					 */
+					/** Con valor, es una lápida: cuenta borrada y datos personales limpiados (028). */
 					deleted_at: string | null
 				}
 				Insert: {

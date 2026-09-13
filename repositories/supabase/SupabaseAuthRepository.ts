@@ -31,15 +31,8 @@ export class SupabaseAuthRepository implements IAuthRepository {
 	}
 
 	/**
-	 * Login con huella: reanuda la sesión desde el refresh token guardado.
-	 *
-	 * refreshSession() y no setSession(): éste sólo necesita el refresh token, mientras
-	 * que setSession() pide también un access token que ya estaría vencido y no
-	 * tenemos por qué guardar.
-	 *
-	 * El error más esperable acá es un token ya rotado o revocado (el usuario cerró
-	 * sesión en otro dispositivo, o pasó demasiado tiempo). Se devuelve tal cual y la
-	 * pantalla cae al login con contraseña.
+	 * refreshSession() y no setSession(): éste sólo necesita el refresh token, y el
+	 * otro pediría además un access token vencido que no hay por qué guardar.
 	 */
 	async signInWithRefreshToken(refreshToken: string): Promise<{ error: Error | null }> {
 		const { error } = await supabase.auth.refreshSession({ refresh_token: refreshToken })
@@ -52,12 +45,8 @@ export class SupabaseAuthRepository implements IAuthRepository {
 	}
 
 	/**
-	 * Borra la cuenta del usuario de la sesión (028).
-	 *
-	 * Por RPC y no con `auth.admin.deleteUser()`: la API de admin necesita la
-	 * service_role key, que no puede vivir en una app instalada en un teléfono.
-	 * La RPC es SECURITY DEFINER y resuelve a quién borrar con auth.uid(), así que
-	 * el cliente no tiene forma de pedir el borrado de otra persona.
+	 * Por RPC y no con `auth.admin.deleteUser()`, que necesita la service_role key y
+	 * ésa no puede vivir en una app instalada en un teléfono.
 	 */
 	async deleteAccount(): Promise<void> {
 		const { error } = await supabase.rpc('delete_my_account')
