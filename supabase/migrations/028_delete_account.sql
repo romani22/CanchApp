@@ -125,59 +125,33 @@ BEGIN
         RAISE EXCEPTION 'Hay que estar autenticado para borrar la cuenta';
     END IF;
 
-    -- ── Los partidos futuros que organizaba se cancelan ────────────────────
-    -- Un partido sin organizador es un partido zombi: las policies de `matches`
-    -- piden ser el creador para editarlo o cancelarlo, así que si queda abierto
-    -- no lo puede tocar nadie nunca más, y la gente se presenta a una cancha que
-    -- nadie reservó.
-    --
-    -- El UPDATE dispara trigger_notify_match_cancelled, que avisa a los
-    -- participantes. Por eso va ANTES del borrado del usuario: el aviso tiene que
-    -- salir mientras el partido todavía tiene participantes.
-    --
-    -- Los partidos ya jugados no se tocan: son el historial que esta migración
-    -- existe para conservar.
+    -- Un partido sin organizador no lo puede cancelar nadie después: las policies
+    -- de `matches` piden ser el creador. El UPDATE avisa a los participantes, así
+    -- que va antes del borrado. Los ya jugados no se tocan.
     UPDATE matches
     SET status = 'cancelled'
     WHERE creator_id = v_user_id
       AND starts_at > NOW()
       AND status <> 'cancelled';
 
-    -- ── Lo que se borra entero ─────────────────────────────────────────────
-    -- Datos que son sólo de esta persona y no le hacen falta a nadie más.
-
-    -- Identificadores de dispositivo. Además corta los push: sin esto le seguirían
-    -- llegando notificaciones a un teléfono de una cuenta que ya no existe.
+    -- Identificadores de dispositivo. Además corta los push.
     DELETE FROM push_tokens WHERE user_id = v_user_id;
 
     DELETE FROM notifications WHERE user_id = v_user_id;
     DELETE FROM match_notification_log WHERE user_id = v_user_id;
 
-    -- Solicitudes e invitaciones suyas: son trámites en curso, no historia.
+    -- Trámites en curso, no historia.
     DELETE FROM join_requests WHERE user_id = v_user_id;
 
-    -- Las calificaciones que RECIBIÓ describen a una persona que ya no está.
+    -- Las que RECIBIÓ describen a una persona que ya no está.
     DELETE FROM match_ratings WHERE rated_user_id = v_user_id;
 
-    -- ── Lo que se conserva sin el texto libre ──────────────────────────────
-    -- Las calificaciones que DIO se quedan, pero sin el comentario.
-    --
-    -- El número tiene que sobrevivir: `rating` y `rating_count` de los demás se
-    -- calcularon con él, y el trigger que los mantiene (on_new_rating) es AFTER
-    -- INSERT — no recalcula nada al borrar. Borrar estas filas dejaría a otros
-    -- usuarios con un promedio que ya no se corresponde con ninguna calificación
-    -- existente. El comentario sí se va: eso es texto que escribió la persona.
+    -- Las que DIO conservan el puntaje: el rating de los demás se calculó con él y
+    -- on_new_rating es AFTER INSERT, no recalcula al borrar. Se va el comentario.
     UPDATE match_ratings SET comment = NULL WHERE rater_id = v_user_id;
 
-    -- ── La lápida ──────────────────────────────────────────────────────────
-    -- `email` va a cadena vacía y no a NULL porque la columna es NOT NULL. De
-    -- paso, el buscador consulta `email.ilike` y una cadena vacía no matchea
-    -- ninguna búsqueda, así que la lápida no aparece por ahí.
-    --
-    -- `rating` y `rating_count` vuelven al default porque las calificaciones que
-    -- las sostenían se borraron cuatro líneas más arriba. `total_matches`,
-    -- `total_wins` y `elo_rating` se quedan: no identifican a nadie y son parte
-    -- de los partidos que sobreviven.
+    -- `email` va a cadena vacía porque la columna es NOT NULL. `rating` vuelve al
+    -- default porque las calificaciones que lo sostenían se acaban de borrar.
     UPDATE profiles
     SET email                 = '',
         full_name             = 'Usuario eliminado',
@@ -193,14 +167,8 @@ BEGIN
         deleted_at            = NOW()
     WHERE id = v_user_id;
 
-    -- ── Y recién ahora, el borrado de verdad ───────────────────────────────
-    -- Cascadea a auth.identities, auth.sessions y los refresh tokens: se cierran
-    -- todas las sesiones en todos los dispositivos y el mail queda libre.
-    --
-    -- Va último a propósito. Si algo de arriba falla, la transacción entera
-    -- vuelve atrás y la cuenta sigue existiendo — que es el lado seguro del
-    -- error: es preferible un borrado que no se completó a una cuenta borrada a
-    -- medias, con el usuario afuera y sus datos adentro.
+    -- Último a propósito: si algo de arriba falla, la transacción vuelve atrás y la
+    -- cuenta sigue existiendo. Cascadea a identities, sessions y refresh tokens.
     DELETE FROM auth.users WHERE id = v_user_id;
 END;
 $$ LANGUAGE plpgsql;

@@ -1,15 +1,15 @@
 -- =====================================================
--- Verificación de "eliminar mi cuenta" (migraciones 028 y 029)
+-- Verificación de "eliminar mi cuenta": migraciones 028, 029 y 030
 -- =====================================================
 --
--- CORRER ESTO DESPUÉS DE APLICAR LA 028 Y LA 029, en el editor SQL del hosteado.
+-- Correr en el editor SQL del hosteado, después de aplicar cada migración.
 --
--- Es de sólo lectura y no inserta datos de prueba, igual que verify_025/026/027.
--- La prueba de comportamiento está en smoke_rls_security.sql (bloque 13), que crea
--- usuarios y partidos falsos y por eso sólo va contra la base local.
+-- Sólo lectura: inspecciona el catálogo y no crea datos, por eso es seguro en
+-- producción. El comportamiento se prueba en smoke_rls_security.sql, que crea
+-- usuarios falsos y sólo va contra la base local.
 --
--- Todo tiene que decir OK. Las dos son re-ejecutables, así que ante una FALLA se
--- pueden volver a aplicar enteras.
+-- Todo tiene que decir OK. La migración es re-ejecutable: ante una FALLA se puede
+-- volver a aplicar entera.
 --
 -- EL CONTROL QUE MÁS IMPORTA ES EL 1. Si volviera el ON DELETE CASCADE, borrar una
 -- cuenta arrastraría los partidos que organizó y el historial de todos los que
@@ -81,11 +81,18 @@ WITH checks AS (
     UNION ALL
 
     -- ── deleted_at es del servidor, no del cliente ─────────────────────────
+    -- La firma va completa y por to_regprocedure(), no `WHERE proname = ...`: si
+    -- algún día aparece una sobrecarga, el subquery escalar devuelve dos filas y
+    -- mata la consulta entera — se pierden los 13 controles, no uno. Es la misma
+    -- trampa que dejó inservible a verify_025 desde la 026.
     SELECT 6,
            'protect_profile_derived_columns protege deleted_at',
            CASE
+               WHEN to_regprocedure('public.protect_profile_derived_columns()') IS NULL
+                   THEN 'NO EXISTE'
                WHEN (SELECT prosrc FROM pg_proc
-                     WHERE proname = 'protect_profile_derived_columns') LIKE '%deleted_at%'
+                     WHERE oid = to_regprocedure('public.protect_profile_derived_columns()'))
+                        LIKE '%deleted_at%'
                    THEN ''
                ELSE 'el cliente puede marcarse como borrado sin borrarse' END
 
@@ -139,8 +146,35 @@ WITH checks AS (
 
     UNION ALL
 
-    -- ── Transversal, heredado de la 025 ────────────────────────────────────
+    -- ── La cuenta borrada sale de lo que viene (030) ───────────────────────
     SELECT 11,
+           'delete_my_account sale de los partidos futuros ajenos',
+           CASE
+               WHEN to_regprocedure('public.delete_my_account()') IS NULL
+                   THEN 'NO EXISTE'
+               WHEN (SELECT prosrc FROM pg_proc
+                     WHERE oid = to_regprocedure('public.delete_my_account()'))
+                        LIKE '%DELETE FROM match_participants%'
+                   THEN ''
+               ELSE 'la lápida sigue ocupando lugar en partidos de otros' END
+
+    UNION ALL
+
+    SELECT 12,
+           'create_notification no escribe sobre cuentas borradas',
+           CASE
+               WHEN to_regprocedure('public.create_notification(uuid,text,text,text,jsonb)') IS NULL
+                   THEN 'NO EXISTE'
+               WHEN (SELECT prosrc FROM pg_proc
+                     WHERE oid = to_regprocedure('public.create_notification(uuid,text,text,text,jsonb)'))
+                        LIKE '%deleted_at%'
+                   THEN ''
+               ELSE 'a una cuenta borrada le siguen entrando notificaciones' END
+
+    UNION ALL
+
+    -- ── Transversal, heredado de la 025 ────────────────────────────────────
+    SELECT 13,
            'todas las SECURITY DEFINER con search_path fijo',
            COALESCE((SELECT string_agg(p.oid::REGPROCEDURE::TEXT, ', ')
                      FROM pg_proc p

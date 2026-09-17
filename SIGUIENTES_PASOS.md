@@ -25,8 +25,9 @@ Pegá esto en un chat nuevo:
 | `supabase/migrations/027_match_invitations.sql` | A4 — invitaciones con consentimiento |
 | `supabase/migrations/028_delete_account.sql` | Eliminar mi cuenta (bloqueo de Google Play) |
 | `supabase/migrations/029_no_rating_deleted_accounts.sql` | Cierra la mitad que la 028 dejó abierta: calificar cuentas borradas |
-| `supabase/diagnostics/smoke_rls_security.sql` | 56 aserciones. **Sólo contra la base local** (crea usuarios falsos) |
-| `supabase/diagnostics/verify_025/026/027/028.sql` | Verificadores de sólo lectura (13 + 15 + 13 + 11 chequeos; el de 028 cubre también la 029). **Seguros en producción** |
+| `supabase/migrations/030_deleted_accounts_leave_future_matches.sql` | La cuenta borrada sale de los partidos que vienen y deja de recibir notificaciones |
+| `supabase/diagnostics/smoke_rls_security.sql` | 58 aserciones. **Sólo contra la base local** (crea usuarios falsos) |
+| `supabase/diagnostics/verify_025/026/027/028.sql` | Verificadores de sólo lectura (13 + 15 + 13 + 13 chequeos; el de 028 cubre también la 029 y la 030). **Seguros en producción** |
 | `supabase/functions/send-push-notification/README.md` | Cómo desplegar la Edge Function y su secreto |
 
 Validación local completa:
@@ -72,7 +73,13 @@ PostgREST incluso sugiere la pista exacta en el `hint` del error 300, así que s
 
 La migración 027 **ya está aplicada en la base hosteada** y verificada, pero el cliente correspondiente **no está buildeado**. Mientras tanto, el build viejo instalado falla al crear un partido con jugadores registrados pre-agregados: la policy nueva rechaza ese INSERT. Se cierra buildeando.
 
-> **La 028 ya está aplicada en la base hosteada. Falta la 029**, que cierra lo que la 028 dejó abierto: una lápida seguía siendo calificable, y el trigger `on_new_rating` le repoblaba el rating que el borrado había reseteado (medido: 5.00/0 → 1.00/1). Aplicarla y correr `verify_028.sql`, que cubre las dos.
+> **La 028 ya está aplicada en la base hosteada. Faltan la 029 y la 030**, que cierran tres cosas que la 028 dejó abiertas:
+>
+> - una lápida seguía siendo **calificable**, y `on_new_rating` le repoblaba el rating que el borrado había reseteado (medido: 5.00/0 → 1.00/1);
+> - seguía **ocupando lugar** en los partidos futuros de otros — el organizador la contaba como que iba (medido: partido de 4 en `open` con `players_needed = 2`);
+> - seguía **recibiendo notificaciones** después de borrarse.
+>
+> Aplicar las dos y correr `verify_028.sql`, que cubre las tres.
 
 El build pendiente trae:
 
@@ -123,7 +130,8 @@ npx expo prebuild --platform android   # necesario para que M9 y M5 tengan efect
 5. Desde la otra cuenta:
    - el partido pasado **sigue estando**, y el organizador ahora dice *"Usuario eliminado"*;
    - el partido futuro quedó **cancelado**, y llegó el aviso;
-   - buscar a esa persona para invitarla a un partido: **no debe aparecer**.
+   - buscar a esa persona para invitarla a un partido: **no debe aparecer**;
+   - si la cuenta borrada iba a jugar un partido tuyo que todavía no se jugó, **debe haber salido** y el cupo tiene que mostrar un lugar más.
 6. Registrarse de nuevo con el mismo mail: **debe dejar** (el mail quedó libre) y tiene que entrar como cuenta nueva, sin nada del historial anterior.
 
 ### 1.2 Verificar M9 (permisos Android)
@@ -265,3 +273,5 @@ Mientras no pagues Pro: programate un `pg_dump` periódico. No es point-in-time 
 - **El login con huella guarda el refresh token, nunca la contraseña.** No se usa `requireAuthentication` de SecureStore porque en Android exige autenticación para escribir, y el token rota cada hora: le pediría la huella al usuario todo el tiempo.
 - **Los resultados y las solicitudes se escriben sólo por RPC.** Las tablas no tienen DML directo para `authenticated`.
 - **Toda migración que agregue o borre una RPC debe actualizar el bloque 6c del smoke test Y el chequeo 6 de `verify_025.sql`.** `has_function_privilege()` sobre una función inexistente no devuelve `false`: corta con error y mata el archivo entero. Ya pasó una vez: la 026 (2026-08-12) dejó `verify_025.sql` muerto, y no se notó porque no aparece como un FALLA visible sino que corta la ejecución. Por eso el chequeo 6 ahora envuelve cada nombre en `to_regprocedure()` dentro de un `CASE` para que una RPC borrada salga como FALLA. Al agregar una RPC nueva, conviene copiar ese patrón.
+
+- **En los verificadores, toda consulta a `pg_proc` va por `to_regprocedure('public.fn(tipos)')`, nunca por `WHERE proname = '...'`.** Es la misma trampa con otra forma: un subquery escalar filtrando sólo por nombre devuelve dos filas en cuanto existe una sobrecarga, y muere con *"more than one row returned by a subquery"* llevándose los 13 controles por delante. Verificado creando una sobrecarga a propósito. Con `to_regprocedure` la firma queda fijada y una función faltante sale como FALLA `NO EXISTE` en vez de cortar.

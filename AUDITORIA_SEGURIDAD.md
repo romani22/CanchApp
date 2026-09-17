@@ -6,7 +6,7 @@ Fecha: 2026-08-08 · Rama: `Desarrollo` · Commit base: `0e9fc32`
 
 Se revisó todo lo que es auditable desde el repo:
 
-- Las 25 migraciones de `supabase/migrations/` (RLS, GRANTs, funciones `SECURITY DEFINER`, triggers, vistas).
+- Las migraciones de `supabase/migrations/` (RLS, GRANTs, funciones `SECURITY DEFINER`, triggers, vistas). Eran 25 al momento de la auditoría; las posteriores son arreglos de estos mismos hallazgos.
 - La Edge Function `send-push-notification`.
 - `supabase/config.toml` (configuración de auth).
 - Todo el cliente: `app/`, `context/`, `services/`, `repositories/`, `hooks/`, `lib/`.
@@ -35,7 +35,7 @@ Lo que queda son **cinco caminos que reabren, por la puerta de al lado, justo lo
 | M5 | ⚠️ Parcial: `allowBackup: false` en `app.json` (falta el build). Queda pendiente mover la sesión de AsyncStorage a SecureStore. |
 | M1, M4, M7, M10, B1-B9 | Abiertos. |
 
-Todo lo cerrado está validado contra la base local (2026-09-13): `supabase db reset` reaplica las 29 migraciones sin error, `smoke_rls_security.sql` da 56/56, los cuatro verificadores dan 13/13, 15/15, 13/13 y 11/11, `tsc` limpio, `eslint` limpio y **315 tests** del cliente en verde.
+Todo lo cerrado está validado contra la base local (2026-09-13): `supabase db reset` reaplica las 30 migraciones sin error, `smoke_rls_security.sql` da 58/58, los cuatro verificadores dan 13/13, 15/15, 13/13 y 13/13, `tsc` limpio, `eslint` limpio y **316 tests** del cliente en verde.
 
 | # | Severidad | Hallazgo |
 |---|-----------|----------|
@@ -422,7 +422,7 @@ El proyecto ya tiene `expo-secure-store` instalado y en `plugins` — sólo no s
 >
 > **El límite de lo que el refresh token puede dar.** Cerrar sesión lo revoca — es la contracara de haber elegido un secreto revocable, y `{ scope: 'local' }` tampoco lo salva: revoca el de la sesión actual, que es el guardado. O sea que "cerrar sesión y volver a entrar con la huella" no es alcanzable sin dejar viva una sesión que el usuario dio por cerrada. La app no lo disimula: el `signOut` borra el token y el botón de huella se muestra **sólo si hay uno guardado** (`hasStoredToken()`, distinto de la preferencia), así que sin token la pantalla pide mail y contraseña en vez de fallar al apoyar el dedo. La preferencia sobrevive y el token se rearma solo en el próximo ingreso. Donde la huella sí entra es en el caso que la motivó: la app se abre y la sesión local no está, pero el token sigue siendo válido.
 
-**Dónde:** `hooks/useBiometricAuth.ts:20-23`, usado desde `app/(auth)/Login.tsx:60-70`
+**Dónde:** `hooks/useBiometricAuth.ts:20-23`, usado desde `app/(auth)/Login.tsx:60-70`. Ese hook ya no existe: la lógica vive en `services/biometric.service.ts` y `Login.tsx` la usa directo.
 
 ```ts
 await SecureStore.setItemAsync(CREDENTIALS_KEY, JSON.stringify({ email, password }))

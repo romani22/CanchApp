@@ -1,20 +1,19 @@
 -- =====================================================
--- Verificación posterior a la migración 027
+-- Verificación de la migración 027: invitaciones con consentimiento
 -- =====================================================
 --
--- CORRER ESTO DESPUÉS DE APLICAR LA 027, en el editor SQL del proyecto hosteado.
+-- Correr en el editor SQL del hosteado, después de aplicar la migración.
 --
--- Es de sólo lectura y no inserta datos de prueba, igual que verify_025 y verify_026.
--- La prueba de comportamiento está en smoke_rls_security.sql (bloque 12), que crea
--- usuarios y partidos falsos y por eso sólo va contra la base local.
+-- Sólo lectura: inspecciona el catálogo y no crea datos, por eso es seguro en
+-- producción. El comportamiento se prueba en smoke_rls_security.sql, que crea
+-- usuarios falsos y sólo va contra la base local.
 --
--- Todo tiene que decir OK. La 027 es re-ejecutable, así que ante una FALLA se puede
+-- Todo tiene que decir OK. La migración es re-ejecutable: ante una FALLA se puede
 -- volver a aplicar entera.
 --
--- OJO con el control 4: la 027 revoca EXECUTE en masa sobre todo el esquema para
--- volver a fijar la línea de base, y eso se lleva el GRANT que necesita el CHECK de
--- profiles.sport_levels. Si ese control falla, los usuarios no pueden guardar el
--- perfil.
+-- OJO CON EL CONTROL 4: la 027 revoca EXECUTE en masa para refijar la línea de base
+-- y eso se lleva el GRANT que necesita el CHECK de profiles.sport_levels. Si falla,
+-- nadie puede guardar el perfil.
 -- =====================================================
 
 WITH checks AS (
@@ -135,7 +134,9 @@ WITH checks AS (
            'trigger protect_join_request_identity activo',
            CASE
                WHEN EXISTS (SELECT 1 FROM pg_trigger
-                            WHERE tgname = 'protect_join_request_identity' AND NOT tgisinternal)
+                            WHERE tgrelid = 'public.join_requests'::REGCLASS
+                              AND tgname = 'protect_join_request_identity'
+                              AND NOT tgisinternal)
                    THEN '' ELSE 'FALTA' END
 
     UNION ALL
@@ -144,7 +145,9 @@ WITH checks AS (
            'trigger de aviso al invitado activo',
            CASE
                WHEN EXISTS (SELECT 1 FROM pg_trigger
-                            WHERE tgname = 'trigger_notify_match_invitation' AND NOT tgisinternal)
+                            WHERE tgrelid = 'public.join_requests'::REGCLASS
+                              AND tgname = 'trigger_notify_match_invitation'
+                              AND NOT tgisinternal)
                    THEN '' ELSE 'FALTA' END
 
     UNION ALL

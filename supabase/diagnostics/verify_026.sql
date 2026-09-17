@@ -1,17 +1,15 @@
 -- =====================================================
--- Verificación posterior a la migración 026
+-- Verificación de la migración 026: cierre de caminos de escritura
 -- =====================================================
 --
--- CORRER ESTO DESPUÉS DE APLICAR LA 026, en el editor SQL del proyecto hosteado.
+-- Correr en el editor SQL del hosteado, después de aplicar la migración.
 --
--- Es de sólo lectura y no inserta datos de prueba, igual que verify_025.sql. Ésa es
--- la diferencia con smoke_rls_security.sql, que crea usuarios y partidos falsos y
--- dispara triggers de verdad: aquel prueba el comportamiento y sólo va contra la base
--- local, éste inspecciona el estado y por eso es seguro en producción.
+-- Sólo lectura: inspecciona el catálogo y no crea datos, por eso es seguro en
+-- producción. El comportamiento se prueba en smoke_rls_security.sql, que crea
+-- usuarios falsos y sólo va contra la base local.
 --
--- Todo tiene que decir OK. Cualquier FALLA significa que la migración quedó a
--- medias — lo más probable, que una sentencia haya cortado y el resto no corriera.
--- Aplicar la 026 de nuevo es seguro: es re-ejecutable de punta a punta.
+-- Todo tiene que decir OK. La migración es re-ejecutable: ante una FALLA se puede
+-- volver a aplicar entera.
 -- =====================================================
 
 WITH checks AS (
@@ -37,9 +35,9 @@ WITH checks AS (
     SELECT 2,
            'trigger protect_profile_derived_columns activo',
            CASE
-               WHEN EXISTS (SELECT 1
-                            FROM pg_trigger
-                            WHERE tgname = 'protect_profile_derived_columns'
+               WHEN EXISTS (SELECT 1 FROM pg_trigger
+                            WHERE tgrelid = 'public.profiles'::REGCLASS
+                              AND tgname = 'protect_profile_derived_columns'
                               AND NOT tgisinternal)
                    THEN '' ELSE 'FALTA' END
 

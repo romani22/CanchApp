@@ -1,16 +1,15 @@
 -- =====================================================
--- Verificación posterior a la migración 025
+-- Verificación de la migración 025: cierre de RLS y privilegios
 -- =====================================================
 --
--- CORRER ESTO DESPUÉS DE APLICAR LA 025, en el editor SQL del proyecto hosteado.
+-- Correr en el editor SQL del hosteado, después de aplicar la migración.
 --
--- Es de sólo lectura y no inserta datos de prueba. Esa es la diferencia con
--- smoke_rls_security.sql, que sí crea usuarios y partidos falsos: aquel prueba el
--- comportamiento y por eso sólo va contra la base local, éste inspecciona el
--- estado y por eso es seguro en producción.
+-- Sólo lectura: inspecciona el catálogo y no crea datos, por eso es seguro en
+-- producción. El comportamiento se prueba en smoke_rls_security.sql, que crea
+-- usuarios falsos y sólo va contra la base local.
 --
--- Todo tiene que decir OK. Cualquier FALLA significa que la migración quedó a
--- medias — lo más probable es que una sentencia haya cortado y el resto no corrió.
+-- Todo tiene que decir OK. La migración es re-ejecutable: ante una FALLA se puede
+-- volver a aplicar entera.
 -- =====================================================
 
 WITH checks AS (
@@ -31,7 +30,7 @@ WITH checks AS (
     -- anon no puede ejecutar ninguna función de public.
     SELECT 2,
            'anon sin RPC',
-           COALESCE(string_agg(p.oid::regprocedure::text, ', '), '')
+           COALESCE(string_agg(p.oid::REGPROCEDURE::TEXT, ', '), '')
     FROM pg_proc p
              JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
@@ -64,20 +63,11 @@ WITH checks AS (
 
     UNION ALL
 
-    -- Las 7 RPC del cliente tienen que seguir abiertas, o la app se rompe.
+    -- Eran nueve hasta la 025; la 026 borró las dos de match_players.
     --
-    -- Eran nueve hasta la 025. La 026 borró add_multiple_players y remove_match_player
-    -- junto con la feature muerta de match_players, así que salieron de la lista.
-    --
-    -- El CASE con to_regprocedure() no es adorno: has_function_privilege() sobre una
-    -- función que no existe NO devuelve false, corta con error — y como todos los
-    -- chequeos de este archivo son un solo UNION ALL, se lleva puestos a los demás.
-    -- Era exactamente lo que le pasaba a este verificador desde la 026: no reportaba
-    -- una falla, moría entero. Con el CASE, una RPC borrada sale como FALLA.
-    --
-    -- El CASE además es necesario y no cosmético: en un OR, Postgres no garantiza
-    -- que la primera condición se evalúe antes, así que la función podría llamarse
-    -- igual. El CASE sí garantiza que sólo se evalúa la rama elegida.
+    -- El CASE con to_regprocedure() es obligatorio: has_function_privilege() sobre una
+    -- función inexistente corta con error y se lleva los otros doce chequeos. Tiene que
+    -- ser CASE y no OR, porque en un OR Postgres no garantiza el orden de evaluación.
     SELECT 6,
            'las 7 RPC del cliente siguen abiertas',
            COALESCE(string_agg(f.nombre || CASE WHEN to_regprocedure(f.nombre) IS NULL
@@ -136,7 +126,7 @@ WITH checks AS (
     -- Ninguna SECURITY DEFINER sin search_path.
     SELECT 10,
            'SECURITY DEFINER con search_path',
-           COALESCE(string_agg(p.oid::regprocedure::text, ', '), '')
+           COALESCE(string_agg(p.oid::REGPROCEDURE::TEXT, ', '), '')
     FROM pg_proc p
              JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
@@ -146,20 +136,22 @@ WITH checks AS (
 
     UNION ALL
 
-    -- El trigger que protege las columnas derivadas del perfil.
+    -- Calificado por tabla: un trigger homónimo en otra tabla haría pasar esto en falso.
     SELECT 11,
            'trigger protect_profile_derived_columns activo',
            CASE WHEN EXISTS (SELECT 1 FROM pg_trigger
-                             WHERE tgname = 'protect_profile_derived_columns' AND NOT tgisinternal)
+                             WHERE tgrelid = 'public.profiles'::REGCLASS
+                               AND tgname = 'protect_profile_derived_columns'
+                               AND NOT tgisinternal)
                     THEN '' ELSE 'FALTA' END
 
     UNION ALL
 
-    -- El CHECK que impide autocalificarse.
     SELECT 12,
            'CHECK match_ratings_no_self_rating',
            CASE WHEN EXISTS (SELECT 1 FROM pg_constraint
-                             WHERE conname = 'match_ratings_no_self_rating')
+                             WHERE conrelid = 'public.match_ratings'::REGCLASS
+                               AND conname = 'match_ratings_no_self_rating')
                     THEN '' ELSE 'FALTA' END
 
     UNION ALL

@@ -342,6 +342,7 @@ export default function ProfileScreen() {
 								<Text style={localStyles.deleteBullet}>•  Se eliminan tu mail, tu teléfono, tu foto y tu zona.</Text>
 								<Text style={localStyles.deleteBullet}>•  Los partidos que organizaste siguen en el historial de quienes jugaron, pero sin tu nombre.</Text>
 								<Text style={localStyles.deleteBullet}>•  Los partidos futuros que organizabas se cancelan y se les avisa a los jugadores.</Text>
+								<Text style={localStyles.deleteBullet}>•  Salís de los partidos que ibas a jugar, para dejarle el lugar libre a otro.</Text>
 							</View>
 
 							{hasPasswordIdentity ? (

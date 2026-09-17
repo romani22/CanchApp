@@ -1203,6 +1203,15 @@ VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', '55555555-5555-5555-5555-5555555
        ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', '55555555-5555-5555-5555-555555555555',
         'futbol', 'El del sábado', NOW() + INTERVAL '5 days', 'Cancha Test', 4, 4, 'open');
 
+-- Un partido futuro que organiza ANA y que Dani sólo juega (030).
+INSERT INTO matches (id, creator_id, sport, title, starts_at, venue_name, total_players, players_needed, status)
+VALUES ('ffffffff-ffff-ffff-ffff-ffffffffffff', '11111111-1111-1111-1111-111111111111',
+        'futbol', 'El de Ana', NOW() + INTERVAL '4 days', 'Cancha Test', 4, 4, 'open');
+
+INSERT INTO match_participants (match_id, user_id, is_creator)
+VALUES ('ffffffff-ffff-ffff-ffff-ffffffffffff', '11111111-1111-1111-1111-111111111111', true),
+       ('ffffffff-ffff-ffff-ffff-ffffffffffff', '55555555-5555-5555-5555-555555555555', false);
+
 INSERT INTO match_participants (match_id, user_id, is_creator)
 VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', '55555555-5555-5555-5555-555555555555', true),
        ('dddddddd-dddd-dddd-dddd-dddddddddddd', '22222222-2222-2222-2222-222222222222', false),
@@ -1434,6 +1443,63 @@ $$
             RAISE EXCEPTION 'ROTO: calificar a un usuario vivo dejó de funcionar';
         END IF;
         RAISE NOTICE 'OK 13l — calificar a un usuario vivo sigue funcionando';
+    END
+$$;
+
+
+-- ── Deja libre el lugar en los partidos que vienen (030) ───────────────────
+-- La 028 cancelaba los que organizaba, pero no la sacaba de los de otros: el
+-- organizador la seguía contando y nadie se iba a presentar por ella.
+DO
+$$
+    DECLARE
+        v_n INTEGER;
+    BEGIN
+        SELECT COUNT(*) INTO v_n FROM match_participants
+        WHERE match_id = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+          AND user_id = '55555555-5555-5555-5555-555555555555';
+        IF v_n <> 0 THEN
+            RAISE EXCEPTION 'ROTO: la lápida sigue ocupando lugar en el partido futuro de otro';
+        END IF;
+
+        SELECT COUNT(*) INTO v_n FROM match_participants
+        WHERE match_id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'
+          AND user_id = '55555555-5555-5555-5555-555555555555';
+        IF v_n <> 1 THEN
+            RAISE EXCEPTION 'ROTO: la sacaron también del partido ya jugado';
+        END IF;
+        RAISE NOTICE 'OK 13m — sale de los partidos futuros ajenos y se queda en los jugados';
+    END
+$$;
+
+
+-- ── Ninguna notificación nueva para una lápida (030) ───────────────────────
+-- El guard vive en create_notification(), que es el único lugar que inserta.
+DO
+$$
+    DECLARE
+        v_id UUID;
+        v_n  INTEGER;
+    BEGIN
+        v_id := create_notification('55555555-5555-5555-5555-555555555555',
+                                    'new_match', 'no debería llegar', 'cuerpo');
+        IF v_id IS NOT NULL THEN
+            RAISE EXCEPTION 'ROTO: create_notification aceptó una cuenta borrada';
+        END IF;
+
+        SELECT COUNT(*) INTO v_n FROM notifications
+        WHERE user_id = '55555555-5555-5555-5555-555555555555';
+        IF v_n <> 0 THEN
+            RAISE EXCEPTION 'ROTO: quedaron % notificaciones en una cuenta borrada', v_n;
+        END IF;
+
+        -- Y no se rompió para los vivos.
+        v_id := create_notification('44444444-4444-4444-4444-444444444444',
+                                    'new_match', 'sí debería llegar', 'cuerpo');
+        IF v_id IS NULL THEN
+            RAISE EXCEPTION 'ROTO: create_notification dejó de funcionar para los vivos';
+        END IF;
+        RAISE NOTICE 'OK 13n — create_notification filtra lápidas y sigue andando para los vivos';
     END
 $$;
 
