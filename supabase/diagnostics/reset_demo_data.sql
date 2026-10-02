@@ -21,23 +21,14 @@
 
 
 -- ── PASO 1: vaciar los datos de la app ──────────────────────────────────────
--- CASCADE se encarga del orden entre estas tablas. profiles va incluida: la
--- recrea el trigger handle_new_user() en el próximo registro.
-TRUNCATE TABLE public.match_ratings,
-    public.match_players,
-    public.match_participants,
-    -- match_scores (003) la reemplazaron match_results y match_player_stats en 021.
-    public.match_results,
-    public.match_player_stats,
-    public.join_requests,
-    public.notifications,
-    public.push_tokens,
-    public.matches,
-    public.team_members,
-    public.teams,
-    public.tournaments,
-    public.profiles
-    RESTART IDENTITY CASCADE;
+-- Sólo profiles, a propósito: toda tabla con datos de usuario cuelga de ella por
+-- FK, y CASCADE las vacía a todas, incluidas las que se agreguen después. La lista
+-- explícita que había acá se quedó sin las tablas de la 023 y la 024, y nombrar
+-- una tabla que ya no existe hace fallar el TRUNCATE entero.
+-- TRUNCATE no dispara los triggers por fila: un DELETE en cascada correría los
+-- de recálculo de cupos y estadísticas sobre filas que se están borrando.
+-- profiles la recrea el trigger handle_new_user() en el próximo registro.
+TRUNCATE TABLE public.profiles RESTART IDENTITY CASCADE;
 
 
 -- ── PASO 2: comprobar que el bucket quedó vacío ─────────────────────────────
@@ -57,4 +48,6 @@ SELECT (SELECT count(*) FROM auth.users)           AS usuarios,
        (SELECT count(*) FROM public.profiles)      AS perfiles,
        (SELECT count(*) FROM public.matches)       AS partidos,
        (SELECT count(*) FROM storage.objects)      AS archivos,
-       (SELECT count(*) FROM public.notifications) AS notificaciones;
+       (SELECT count(*) FROM public.notifications) AS notificaciones,
+       (SELECT count(*) FROM public.push_tokens)   AS tokens,
+       (SELECT count(*) FROM public.match_results) AS resultados;
